@@ -82,7 +82,7 @@ make CC='%{my_cc}' -C sample tidy
 
 %files
 %defattr(-,root,root)
-%{_bindir}
+%{_bindir}/*
 %dir %{_datadir}/syslinux
 %{_datadir}/syslinux/*.com
 %{_datadir}/syslinux/*.exe

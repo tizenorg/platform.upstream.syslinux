@@ -1,0 +1,3 @@
+* Fri Dec 21 2012 Patrick McCarty <patrick.mccarty@linux.intel.com> 0afce2a
+- Package files in /usr/bin/*, but not /usr/bin itself
+
