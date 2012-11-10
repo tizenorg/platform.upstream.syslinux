@@ -8,9 +8,6 @@ Url:            http://syslinux.zytor.com/
 Group:          System/Boot
 Source0:        ftp://ftp.kernel.org/pub/linux/utils/boot/syslinux/%{name}-%{version}.tar.xz
 Source101:      syslinux-rpmlintrc
-Patch0:         0001-btrfs-Correctly-determine-the-installation-subvolume.patch
-Patch1:         syslinux-4.04-libext2fs.diff
-Patch2:         uuid.patch
 BuildRequires:  libext2fs-devel
 BuildRequires:  libuuid-devel
 BuildRequires:  nasm >= 0.98.39
@@ -69,8 +66,6 @@ booting in the /var/lib/tftpboot directory.
 %prep
 %setup -q -n syslinux-%{version}
 
-%patch1
-%patch2 -p1
 
 %build
 make CC='%{my_cc}' clean
