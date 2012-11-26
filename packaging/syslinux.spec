@@ -91,7 +91,7 @@ rm -rf %{buildroot}
 %files
 %manifest syslinux.manifest
 %defattr(-,root,root)
-%{_bindir}
+%{_bindir}/*
 %dir %{_datadir}/syslinux
 %{_datadir}/syslinux/*.com
 %{_datadir}/syslinux/*.exe
