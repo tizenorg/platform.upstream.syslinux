@@ -1,7 +1,7 @@
 #include <string.h>
 #include "fs.h"
 
-__export char *core_getcwd(char *buf, size_t size)
+char *getcwd(char *buf, size_t size)
 {
     char *ret = NULL;
 

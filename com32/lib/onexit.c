@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include "atexit.h"
 
+extern __noreturn(*__exit_handler) (int);
 static struct atexit *__atexit_list;
 
 static __noreturn on_exit_exit(int rv)
@@ -31,6 +32,8 @@ int on_exit(void (*fctn) (int, void *), void *arg)
 
     as->next = __atexit_list;
     __atexit_list = as;
+
+    __exit_handler = on_exit_exit;
 
     return 0;
 }

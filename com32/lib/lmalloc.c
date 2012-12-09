@@ -31,10 +31,19 @@
 #include <string.h>
 #include <syslinux/pmapi.h>
 
+void *lmalloc(size_t size)
+{
+    void *p;
+    p = __com32.cs_pm->lmalloc(size);
+    if (!p)
+	errno = ENOMEM;
+    return p;
+}
+
 void *lzalloc(size_t size)
 {
     void *p;
-    p = lmalloc(size);
+    p = __com32.cs_pm->lmalloc(size);
     if (!p)
 	errno = ENOMEM;
     else
@@ -44,5 +53,5 @@ void *lzalloc(size_t size)
 
 void lfree(void *ptr)
 {
-    free(ptr);
+    __com32.cs_pm->lfree(ptr);
 }

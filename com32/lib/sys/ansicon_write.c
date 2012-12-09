@@ -42,7 +42,6 @@
 #include <syslinux/config.h>
 #include "file.h"
 #include "ansi.h"
-#include "graphics.h"
 
 static void ansicon_erase(const struct term_state *, int, int, int, int);
 static void ansicon_write_char(int, int, uint8_t, const struct term_state *);
@@ -91,7 +90,8 @@ int __ansicon_open(struct file_info *fp)
 	    ti.cols = 80;
 	} else {
 	    /* Force text mode */
-	    syslinux_force_text_mode();
+	    ireg.eax.w[0] = 0x0005;
+	    __intcall(0x22, &ireg, NULL);
 
 	    /* Initial state */
 	    ti.rows = BIOS_ROWS ? BIOS_ROWS + 1 : 25;

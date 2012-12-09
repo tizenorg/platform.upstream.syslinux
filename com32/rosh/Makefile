@@ -16,8 +16,6 @@
 ## ROSH Read Only Shell
 ##
 
-LIBS = $(com32)/libutil/libutil_com.c32 $(com32)/lib/libcom32.c32
-
 topdir = ../..
 MAKEDIR = $(topdir)/mk
 include $(MAKEDIR)/rosh.mk

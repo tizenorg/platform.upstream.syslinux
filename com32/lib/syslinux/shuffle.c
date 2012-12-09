@@ -38,7 +38,6 @@
 #include <string.h>
 #include <inttypes.h>
 #include <com32.h>
-#include <core.h>
 #include <minmax.h>
 #include <dprintf.h>
 #include <syslinux/movebits.h>
@@ -52,8 +51,12 @@ static int shuffler_size;
 
 static void __constructor __syslinux_get_shuffer_size(void)
 {
-    /* +15 padding is to guarantee alignment */
-    shuffler_size = __bcopyxx_len + 15;
+    static com32sys_t reg;
+
+    reg.eax.w[0] = 0x0023;
+    __intcall(0x22, &reg, &reg);
+
+    shuffler_size = (reg.eflags.l & EFLAGS_CF) ? 2048 : reg.ecx.w[0];
 }
 
 /*

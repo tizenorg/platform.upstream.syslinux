@@ -54,8 +54,8 @@ SFLAGS     = $(GCCOPT) $(GCCWARN) -march=i386 \
 	     -nostdinc -iwithprefix include \
 	     -I$(com32)/libutil/include -I$(com32)/include $(GPLINCLUDE)
 
-COM32LD	   = $(com32)/lib/elf32.ld
-LDFLAGS    = -m elf_i386 -shared --hash-style=gnu -T $(COM32LD)
+COM32LD	   = $(com32)/lib/com32.ld
+LDFLAGS    = -m elf_i386 --emit-relocs -T $(COM32LD)
 LIBGCC    := $(shell $(CC) $(GCCOPT) --print-libgcc)
 
 LNXCFLAGS  = -I$(com32)/libutil/include $(GCCWARN) -O -g \
@@ -63,7 +63,8 @@ LNXCFLAGS  = -I$(com32)/libutil/include $(GCCWARN) -O -g \
 LNXSFLAGS  = -g
 LNXLDFLAGS = -g
 
-C_LIBS	   = $(GPLLIB) $(com32)/lib/libcom32.c32 $(LIBGCC)
+C_LIBS	   = $(com32)/libutil/libutil_com.a $(GPLLIB) \
+	     $(com32)/lib/libcom32.a $(LIBGCC)
 C_LNXLIBS  = $(com32)/libutil/libutil_lnx.a
 
 .SUFFIXES: .lss .c .lo .o .elf .c32 .lnx
@@ -93,6 +94,5 @@ C_LNXLIBS  = $(com32)/libutil/libutil_lnx.a
 	$(CC) $(LNXCFLAGS) -o $@ $^
 
 %.c32: %.elf
-	$(OBJCOPY) --strip-debug --strip-unneeded $< $@
-	##$(OBJCOPY) -O binary $< $@
-	##$(RELOCS) $< >> $@ || ( rm -f $@ ; false )
+	$(OBJCOPY) -O binary $< $@
+	$(RELOCS) $< >> $@ || ( rm -f $@ ; false )

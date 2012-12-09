@@ -37,12 +37,12 @@
 ; - Return segment (== real mode cs == 0)
 ; - Return flags
 ;
-		global core_farcall:function hidden
+		global core_farcall
 core_farcall:
 		mov eax,[esp+1*4]		; CS:IP
 		jmp core_syscall
 
-		global core_intcall:function hidden
+		global core_intcall
 core_intcall:
 		movzx eax,byte [esp+1*4]	; INT number
 		mov eax,[eax*4]			; Get CS:IP from low memory
@@ -142,7 +142,7 @@ core_syscall:
 ; followed by the return CS:IP and the CS:IP of the target function.
 ; The value of IF is copied from the calling routine.
 ;
-		global core_cfarcall:function hidden
+		global core_cfarcall
 core_cfarcall:
 		pushfd				; Save IF among other things...
 		push ebx

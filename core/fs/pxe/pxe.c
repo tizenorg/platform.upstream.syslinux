@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <core.h>
-#include <bios.h>
 #include <fs.h>
 #include <minmax.h>
 #include <sys/cpu.h>
@@ -341,13 +340,13 @@ static void ack_packet(struct inode *inode, uint16_t ack_num)
 
 
 /**
- * Get a DHCP packet from the PXE stack into a lowmem buffer
+ * Get a DHCP packet from the PXE stack into the trackbuf
  *
  * @param:  type,  packet type
  * @return: buffer size
  *
  */
-static int pxe_get_cached_info(int type, void *buf, size_t bufsiz)
+static int pxe_get_cached_info(int type)
 {
     int err;
     static __lowmem struct s_PXENV_GET_CACHED_INFO get_cached_info;
@@ -355,8 +354,8 @@ static int pxe_get_cached_info(int type, void *buf, size_t bufsiz)
 
     get_cached_info.Status      = 0;
     get_cached_info.PacketType  = type;
-    get_cached_info.BufferSize  = bufsiz;
-    get_cached_info.Buffer      = FAR_PTR(buf);
+    get_cached_info.BufferSize  = 8192;
+    get_cached_info.Buffer      = FAR_PTR(trackbuf);
     err = pxe_call(PXENV_GET_CACHED_INFO, &get_cached_info);
     if (err) {
         printf("PXE API call failed, error  %04x\n", err);
@@ -797,10 +796,8 @@ static void __pxe_searchdir(const char *filename, struct file *file)
     
 sendreq:
     timeout = *timeout_ptr++;
-    if (!timeout) {
-	free_socket(inode);
+    if (!timeout)
 	return;			/* No file available... */
-    }
     oldtime = jiffies();
 
     socket->tftp_remoteip = ip;
@@ -1050,14 +1047,33 @@ static int pxe_chdir(struct fs_info *fs, const char *src)
     return 0;
 }
 
-static int pxe_chdir_start(void)
+ /*
+  * try to load a config file, if found, return 1, or return 0
+  *
+  */
+static int try_load(char *config_name)
 {
-	get_prefix();
-	return 0;
+    com32sys_t regs;
+
+    printf("Trying to load: %-50s  ", config_name);
+    pxe_mangle_name(KernelName, config_name);
+
+    memset(&regs, 0, sizeof regs);
+    regs.edi.w[0] = OFFS_WRT(KernelName, 0);
+    call16(core_open, &regs, &regs);
+    if (regs.eflags.l & EFLAGS_ZF) {
+	strcpy(ConfigName, KernelName);
+        printf("\r");
+        return 0;
+    } else {
+        printf("ok\n");
+        return 1;
+    }
 }
 
-/* Load the config file, return -1 if failed, or 0 */
-static int pxe_open_config(struct com32_filedata *filedata)
+
+/* Load the config file, return 1 if failed, or 0 */
+static int pxe_load_config(void)
 {
     const char *cfgprefix = "pxelinux.cfg/";
     const char *default_str = "default";
@@ -1065,9 +1081,10 @@ static int pxe_open_config(struct com32_filedata *filedata)
     char *last;
     int tries = 8;
 
+    get_prefix();
     if (DHCPMagic & 0x02) {
         /* We got a DHCP option, try it first */
-	if (open_file(ConfigName, filedata) >= 0)
+	if (try_load(ConfigName))
 	    return 0;
     }
 
@@ -1079,13 +1096,13 @@ static int pxe_open_config(struct com32_filedata *filedata)
     /* Try loading by UUID */
     if (have_uuid) {
 	strcpy(config_file, UUID_str);
-	if (open_file(ConfigName, filedata) >= 0)
+	if (try_load(ConfigName))
             return 0;
     }
 
     /* Try loading by MAC address */
     strcpy(config_file, MAC_str);
-    if (open_file(ConfigName, filedata) >= 0)
+    if (try_load(ConfigName))
         return 0;
 
     /* Nope, try hexadecimal IP prefixes... */
@@ -1093,7 +1110,7 @@ static int pxe_open_config(struct com32_filedata *filedata)
     last = &config_file[8];
     while (tries) {
         *last = '\0';        /* Zero-terminate string */
-	if (open_file(ConfigName, filedata) >= 0)
+	if (try_load(ConfigName))
             return 0;
         last--;           /* Drop one character */
         tries--;
@@ -1101,7 +1118,7 @@ static int pxe_open_config(struct com32_filedata *filedata)
 
     /* Final attempt: "default" string */
     strcpy(config_file, default_str);
-    if (open_file(ConfigName, filedata) >= 0)
+    if (try_load(ConfigName))
         return 0;
 
     printf("%-68s\n", "Unable to locate configuration file");
@@ -1154,7 +1171,7 @@ static void make_sysuuid_string(void)
 
 /*
  * Generate an ip=<client-ip>:<boot-server-ip>:<gw-ip>:<netmask>
- * option into IPOption based on DHCP information in IPInfo.
+ * option into IPOption based on a DHCP packet in trackbuf.
  *
  */
 char __bss16 IPOption[3+4*16];
@@ -1190,6 +1207,9 @@ static void ip_init(void)
 /*
  * Print the IPAPPEND strings, in order
  */
+extern const uint16_t IPAppends[];
+extern const char numIPAppends[];
+
 static void print_ipappend(void)
 {
     size_t i;
@@ -1271,9 +1291,9 @@ static const void *memory_scan(uintptr_t start, int (*func)(const void *))
 
 static const struct pxe_t *memory_scan_for_pxe_struct(void)
 {
-    uint16_t start = bios_fbm(); /* Starting segment */
+    extern uint16_t BIOS_fbm;  /* Starting segment */
 
-    return memory_scan(start << 10, is_pxe);
+    return memory_scan(BIOS_fbm << 10, is_pxe);
 }
 
 static const struct pxenv_t *memory_scan_for_pxenv_struct(void)
@@ -1448,15 +1468,8 @@ static void udp_init(void)
  */
 static void network_init(void)
 {
+    struct bootp_t *bp = (struct bootp_t *)trackbuf;
     int pkt_len;
-    struct bootp_t *bp;
-    const size_t dhcp_max_packet = 4096;
-
-    bp = lmalloc(dhcp_max_packet);
-    if (!bp) {
-	printf("Out of low memory\n");
-	kaboom();
-    }
 
     *LocalDomain = 0;   /* No LocalDomain received */
 
@@ -1464,8 +1477,8 @@ static void network_init(void)
      * Get the DHCP client identifiers (query info 1)
      */
     printf("Getting cached packet ");
-    pkt_len = pxe_get_cached_info(1, bp, dhcp_max_packet);
-    parse_dhcp(bp, pkt_len);
+    pkt_len = pxe_get_cached_info(1);
+    parse_dhcp(pkt_len);
     /*
      * We don't use flags from the request packet, so
      * this is a good time to initialize DHCPMagic...
@@ -1481,8 +1494,8 @@ static void network_init(void)
      * Get the BOOTP/DHCP packet that brought us file (and an IP
      * address). This lives in the DHCPACK packet (query info 2)
      */
-    pkt_len = pxe_get_cached_info(2, bp, dhcp_max_packet);
-    parse_dhcp(bp, pkt_len);
+    pkt_len = pxe_get_cached_info(2);
+    parse_dhcp(pkt_len);
     /*
      * Save away MAC address (assume this is in query info 2. If this
      * turns out to be problematic it might be better getting it from
@@ -1496,11 +1509,9 @@ static void network_init(void)
      * Get the boot file and other info. This lives in the CACHED_REPLY
      * packet (query info 3)
      */
-    pkt_len = pxe_get_cached_info(3, bp, dhcp_max_packet);
-    parse_dhcp(bp, pkt_len);
+    pkt_len = pxe_get_cached_info(3);
+    parse_dhcp(pkt_len);
     printf("\n");
-
-    lfree(bp);
 
     make_bootif_string();
     make_sysuuid_string();
@@ -1656,7 +1667,7 @@ int reset_pxe(void)
  * This function unloads the PXE and UNDI stacks and
  * unclaims the memory.
  */
-void unload_pxe(uint16_t flags)
+void unload_pxe(void)
 {
     /* PXE unload sequences */
     static const uint8_t new_api_unload[] = {
@@ -1678,14 +1689,14 @@ void unload_pxe(uint16_t flags)
 	uint16_t Status;	/* All calls have this as the first member */
     } unload_call;
 
-    dprintf("FBM before unload = %d\n", bios_fbm());
+    dprintf("FBM before unload = %d\n", BIOS_fbm);
 
     err = reset_pxe();
 
-    dprintf("FBM after reset_pxe = %d, err = %d\n", bios_fbm(), err);
+    dprintf("FBM after reset_pxe = %d, err = %d\n", BIOS_fbm, err);
 
     /* If we want to keep PXE around, we still need to reset it */
-    if (flags || err)
+    if (KeepPXE || err)
 	return;
 
     dprintf("APIVer = %04x\n", APIVer);
@@ -1702,8 +1713,8 @@ void unload_pxe(uint16_t flags)
     }
 
     api = 0xff00;
-    if (real_base_mem <= bios_fbm()) {  /* Sanity check */
-	dprintf("FBM %d < real_base_mem %d\n", bios_fbm(), real_base_mem);
+    if (real_base_mem <= BIOS_fbm) {  /* Sanity check */ 
+	dprintf("FBM %d < real_base_mem %d\n", BIOS_fbm, real_base_mem);
 	goto cant_free;
     }
     api++;
@@ -1711,20 +1722,20 @@ void unload_pxe(uint16_t flags)
     /* Check that PXE actually unhooked the INT 0x1A chain */
     int_addr = (size_t)GET_PTR(*(far_ptr_t *)(4 * 0x1a));
     int_addr >>= 10;
-    if (int_addr >= real_base_mem || int_addr < bios_fbm()) {
-	set_bios_fbm(real_base_mem);
-	dprintf("FBM after unload_pxe = %d\n", bios_fbm());
+    if (int_addr >= real_base_mem || int_addr < BIOS_fbm) {
+	BIOS_fbm = real_base_mem;
+	dprintf("FBM after unload_pxe = %d\n", BIOS_fbm);
 	return;
     }
 
     dprintf("Can't free FBM, real_base_mem = %d, "
 	    "FBM = %d, INT 1A = %08x (%d)\n",
-	    real_base_mem, bios_fbm(),
+	    real_base_mem, BIOS_fbm,
 	    *(uint32_t *)(4 * 0x1a), int_addr);
 
 cant_free:
     printf("Failed to free base memory error %04x-%08x (%d/%dK)\n",
-	   api, *(uint32_t *)(4 * 0x1a), bios_fbm(), real_base_mem);
+	   api, *(uint32_t *)(4 * 0x1a), BIOS_fbm, real_base_mem);
     return;
 }
 
@@ -1738,6 +1749,5 @@ const struct fs_ops pxe_fs_ops = {
     .getfssec      = pxe_getfssec,
     .close_file    = pxe_close_file,
     .mangle_name   = pxe_mangle_name,
-    .chdir_start   = pxe_chdir_start,
-    .open_config   = pxe_open_config,
+    .load_config   = pxe_load_config,
 };

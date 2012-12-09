@@ -33,16 +33,15 @@
 
 #include <stddef.h>
 #include <com32.h>
-#include <core.h>
 #include <syslinux/pmapi.h>
 #include <syslinux/idle.h>
 
 void syslinux_reset_idle(void)
 {
-    reset_idle();
+    __com32.cs_pm->reset_idle();
 }
 
 void syslinux_idle(void)
 {
-    __idle();
+    __com32.cs_pm->idle();
 }

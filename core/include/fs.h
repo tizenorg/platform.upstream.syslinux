@@ -61,8 +61,7 @@ struct fs_ops {
     void     (*mangle_name)(char *, const char *);
     size_t   (*realpath)(struct fs_info *, char *, const char *, size_t);
     int      (*chdir)(struct fs_info *, const char *);
-    int      (*chdir_start)(void);
-    int      (*open_config)(struct com32_filedata *);
+    int      (*load_config)(void);
 
     struct inode * (*iget_root)(struct fs_info *);
     struct inode * (*iget)(const char *, struct inode *);
@@ -72,8 +71,6 @@ struct fs_ops {
     int	     (*readdir)(struct file *, struct dirent *);
 
     int      (*next_extent)(struct inode *, uint32_t);
-
-    int      (*copy_super)(void *buf);
 };
 
 /*
@@ -101,9 +98,9 @@ struct inode {
     const char *name;		/* Name, valid for generic path search only */
     int		 refcnt;
     int          mode;   /* FILE , DIR or SYMLINK */
-    uint64_t     size;
-    uint64_t	 blocks; /* How many blocks the file take */
-    uint64_t     ino;    /* Inode number */
+    uint32_t     size;
+    uint32_t	 blocks; /* How many blocks the file take */
+    uint32_t     ino;    /* Inode number */
     uint32_t     atime;  /* Access time */
     uint32_t     mtime;  /* Modify time */
     uint32_t     ctime;  /* Create time */
@@ -182,8 +179,6 @@ static inline struct file *handle_to_file(uint16_t handle)
     return handle ? &files[handle-1] : NULL;
 }
 
-extern char *PATH;
-
 /* fs.c */
 void pm_mangle_name(com32sys_t *);
 void pm_searchdir(com32sys_t *);
@@ -195,7 +190,6 @@ int open_file(const char *name, struct com32_filedata *filedata);
 void pm_open_file(com32sys_t *);
 void close_file(uint16_t handle);
 void pm_close_file(com32sys_t *);
-int open_config(void);
 
 /* chdir.c */
 void pm_realpath(com32sys_t *regs);
@@ -208,23 +202,18 @@ struct dirent *readdir(DIR *dir);
 int closedir(DIR *dir);
 
 /* getcwd.c */
-char *core_getcwd(char *buf, size_t size);
+char *getcwd(char *buf, size_t size);
 
 /*
  * Generic functions that filesystem drivers may choose to use
  */
 
-/* chdir.c */
-int generic_chdir_start(void);
-
 /* mangle.c */
 void generic_mangle_name(char *, const char *);
 
 /* loadconfig.c */
-int search_dirs(struct com32_filedata *filedata,
-		const char *search_directores[], const char *filenames[],
-		char *realname);
-int generic_open_config(struct com32_filedata *filedata);
+int search_config(const char *search_directores[], const char *filenames[]);
+int generic_load_config(void);
 
 /* close.c */
 void generic_close_file(struct file *file);

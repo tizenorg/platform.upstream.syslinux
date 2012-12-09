@@ -16,7 +16,6 @@
  * Resolve an IP address
  */
 
-#include <syslinux/pxe_api.h>
 #include <string.h>
 #include <stdio.h>
 #include <console.h>
@@ -25,7 +24,21 @@
 
 uint32_t resolv(const char *name)
 {
-    return dns_resolv(name);
+    com32sys_t reg;
+
+    strcpy((char *)__com32.cs_bounce, name);
+
+    memset(&reg, 0, sizeof reg);
+    reg.eax.w[0] = 0x0010;
+    reg.ebx.w[0] = OFFS(__com32.cs_bounce);
+    reg.es = SEG(__com32.cs_bounce);
+
+    __intcall(0x22, &reg, &reg);
+
+    if (reg.eflags.l & EFLAGS_CF)
+	return 0;
+    else
+	return reg.eax.l;
 }
 
 int main(int argc, char *argv[])

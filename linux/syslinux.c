@@ -238,24 +238,6 @@ int modify_existing_adv(const char *path)
     return 0;
 }
 
-int do_open_file(char *name)
-{
-    int fd;
-
-    if ((fd = open(name, O_RDONLY)) >= 0) {
-	uint32_t zero_attr = 0;
-	ioctl(fd, FAT_IOCTL_SET_ATTRIBUTES, &zero_attr);
-	close(fd);
-    }
-
-    unlink(name);
-    fd = open(name, O_WRONLY | O_CREAT | O_TRUNC, 0444);
-    if (fd < 0)
-	perror(opt.device);
-
-    return fd;
-}
-
 int main(int argc, char *argv[])
 {
     static unsigned char sectbuf[SECTOR_SIZE];
@@ -271,7 +253,7 @@ int main(int argc, char *argv[])
     const char *errmsg;
     int mnt_cookie;
     int patch_sectors;
-    int i, rv;
+    int i;
 
     mypid = getpid();
     umask(077);
@@ -426,8 +408,16 @@ int main(int argc, char *argv[])
     if (modify_adv() < 0)
 	exit(1);
 
-    fd = do_open_file(ldlinux_name);
+    if ((fd = open(ldlinux_name, O_RDONLY)) >= 0) {
+	uint32_t zero_attr = 0;
+	ioctl(fd, FAT_IOCTL_SET_ATTRIBUTES, &zero_attr);
+	close(fd);
+    }
+
+    unlink(ldlinux_name);
+    fd = open(ldlinux_name, O_WRONLY | O_CREAT | O_TRUNC, 0444);
     if (fd < 0) {
+	perror(opt.device);
 	err = 1;
 	goto umount;
     }
@@ -458,31 +448,6 @@ int main(int argc, char *argv[])
 	perror("bmap");
 	exit(1);
     }
-    close(fd);
-    sync();
-
-    sprintf(ldlinux_name, "%sldlinux.c32", ldlinux_path);
-    fd = do_open_file(ldlinux_name);
-    if (fd < 0) {
-	err = 1;
-	goto umount;
-    }
-
-    rv = xpwrite(fd, syslinux_ldlinuxc32, syslinux_ldlinuxc32_len, 0);
-    if (rv != (int)syslinux_ldlinuxc32_len) {
-	fprintf(stderr, "%s: write failure on %s\n", program, ldlinux_name);
-	exit(1);
-    }
-
-    fsync(fd);
-    /*
-     * Set the attributes
-     */
-    {
-	uint32_t attr = 0x07;	/* Hidden+System+Readonly */
-	ioctl(fd, FAT_IOCTL_SET_ATTRIBUTES, &attr);
-    }
-
     close(fd);
     sync();
 

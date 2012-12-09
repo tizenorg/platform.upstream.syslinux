@@ -337,7 +337,11 @@ done:
     return result;
 }
 
-void pm_pxe_dns_resolv(com32sys_t *regs)
+
+/*
+ * the one should be called from ASM file
+ */
+void pxe_dns_resolv(com32sys_t *regs)
 {
     const char *name = MK_PTR(regs->ds, regs->esi.w[0]);
 

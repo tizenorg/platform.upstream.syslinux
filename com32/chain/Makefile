@@ -14,13 +14,13 @@
 
 topdir = ../..
 MAKEDIR = $(topdir)/mk
-include $(MAKEDIR)/elf.mk
+include $(MAKEDIR)/com32.mk
 
 OBJS = chain.o partiter.o utility.o options.o mangle.o
 
 all: chain.c32
 
-chain.c32: $(OBJS) $(C_LIBS)
+chain.elf: $(OBJS) $(LIBS) $(C_LIBS)
 	$(LD) $(LDFLAGS) -o $@ $^
 
 %.o: %.c

@@ -78,6 +78,8 @@ int main(int argc, char *argv[])
 
     int arg = 0;
 
+    openconsole(&dev_null_r, &dev_stdcon_w);
+
     /* If no argument got passed, let's show the usage */
     if (argc == 1) {
 	    usage();

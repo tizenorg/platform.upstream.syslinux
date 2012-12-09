@@ -16,6 +16,7 @@
 ;;
 ;; Common code for running a COMBOOT image
 ;;
+
 		section .text16
 
 ; Parameter registers definition; this is the definition
@@ -60,6 +61,83 @@
 %define		P_DI		word [bp]
 %define		P_HDI		word [bp+2]
 
+; Looks like a COMBOOT image but too large
+comboot_too_large:
+		pm_call pm_close_file
+		mov si,err_comlarge
+		call writestr
+		jmp enter_command
+
+;
+; Load a COMBOOT image.  A COMBOOT image is basically a DOS .COM file,
+; except that it may, of course, not contain any DOS system calls.  We
+; do, however, allow the execution of INT 20h to return to SYSLINUX.
+;
+is_comboot_image:
+		push si			; Save file handle
+
+		call make_plain_cmdline
+
+		call comboot_setup_api
+
+		mov cx,comboot_seg
+		mov es,cx
+
+		xor di,di
+		mov cx,64		; 256 bytes (size of PSP)
+		xor eax,eax		; Clear PSP
+		rep stosd
+
+		mov word [es:0], 020CDh	; INT 20h instruction
+		; First non-free paragraph
+		; This is valid because comboot_seg == real_mode_seg
+		; == the highest segment used by all derivatives
+		int 12h			; Get DOS memory size
+		shl ax,6		; Kilobytes -> paragraphs
+		mov word [es:02h],ax
+
+%ifndef DEPEND
+%if real_mode_seg != comboot_seg
+%error "This code assumes real_mode_seg == comboot_seg"
+%endif
+%endif
+		; Copy the command line from high memory
+		mov si,cmd_line_here
+		mov cx,125		; Max cmdline len (minus space and CR)
+		mov di,081h		; Offset in PSP for command line
+		mov al,' '		; DOS command lines begin with a space
+		stosb
+
+.loop:		es lodsb
+		and al,al
+		jz .done
+		stosb
+		loop .loop
+.done:
+
+		mov al,0Dh		; CR after last character
+		stosb
+		mov ax,di
+		sub al,82h		; Include space but not CR
+		mov [es:80h],al		; Store command line length
+
+		; Now actually load the file...
+		pop si			; File handle
+		mov bx,100h		; Load at <seg>:0100h
+		mov cx,0FF00h		; Maximum number of bytes
+		pm_call getfsbytes
+		cmp ecx,65536-256-2	; Maximum size
+		ja comboot_too_large
+
+		; And invoke the program...
+		mov ax,es
+		mov ds,ax
+		mov ss,ax
+		xor sp,sp
+		push word 0		; Return to address 0 -> exit
+
+		jmp comboot_seg:100h	; Run it
+
 ;
 ; Set up the COMBOOT API interrupt vectors.  This is now done at
 ; initialization time.
@@ -95,7 +173,6 @@ comboot_setup_api:
 ; Restore the original state of the COMBOOT API vectors, and free
 ; any low memory allocated by the comboot module.
 ;
-		global comboot_cleanup_api:function hidden
 comboot_cleanup_api:
 		pusha
 		mov si,DOSSaveVectors
@@ -114,7 +191,7 @@ DOSSaveVectors	resd 32
 
 comboot_vectors:
 		dw comboot_return	; INT 20 = exit
-		dw comboot_err(21h)	; INT 21 = DOS-compatible system calls
+		dw comboot_int21	; INT 21 = DOS-compatible system calls
 		dw comboot_int22	; INT 22 = native system calls
 		dw comboot_err(23h)	; INT 23 = DOS Ctrl-C handler
 		dw comboot_err(24h)	; INT 24 = DOS critical error handler
@@ -148,6 +225,31 @@ comboot_vectors:
 
 		section .text16
 
+; INT 21h: generic DOS system call
+comboot_int21:	sti
+		push ds
+		push es
+		push fs
+		push gs
+		pushad
+		cld
+		mov bp,cs
+		mov ds,bp
+		mov es,bp
+		mov bp,sp			; Set up stack frame
+
+		call adjust_screen		; The COMBOOT program might have changed the screen
+
+		mov cx,int21_count
+		mov si,int21_table
+.again:		lodsb
+		cmp al,P_AH
+		lodsw
+		loopne .again
+		; The last function in the list is the
+		; "no such function" function
+		clc
+		call ax			; Call the invoked function
 comboot_resume:
 		mov bp,sp		; In case the function clobbers BP
 		setc P_FLAGSL		; Propagate CF->error
@@ -174,20 +276,20 @@ comboot_bogus:	pop dx			; Interrupt number
 		jmp comboot_exit_msg
 comboot_bogus_tail:
 		xchg ax,dx
-		pm_call pm_writehex2		; Interrupt number
+		call writehex2		; Interrupt number
 		mov al,' '
-		pm_call pm_writechr
+		call writechr
 		xchg ax,dx
-		pm_call pm_writehex4		; Function number (AX)
+		call writehex4		; Function number (AX)
 		mov al,' '
-		pm_call pm_writechr
+		call writechr
 		mov eax,edi
-		pm_call pm_writehex8		; CS:IP of the origin
-		pm_call crlf
-		jmp kaboom
+		call writehex8		; CS:IP of the origin
+		call crlf
+		jmp enter_command
 
 ; Proper return vector
-; Note: this gets invoked directly via INT 20h.
+; Note: this gets invoked both via INT 21h and directly via INT 20h.
 ; We don't need to cld explicitly here, because comboot_exit does that
 ; when invoking RESET_STACK_AND_SEGS.
 comboot_return:
@@ -207,12 +309,12 @@ comboot_exit_msg:
 		pop bx			; Return address
 		RESET_STACK_AND_SEGS si	; Contains sti, cld
 		pm_call comboot_cleanup_lowmem
-		pm_call pm_adjust_screen; The COMBOOT program might have change the screen
+		call adjust_screen	; The COMBOOT program might have changed the screen
 		jcxz .nomsg
 		mov si,KernelName
-		pm_call pm_writestr
+		call writestr
 		mov si,cx
-		pm_call pm_writestr
+		call writestr
 .nomsg:
 		jmp bx
 
@@ -220,22 +322,22 @@ comboot_exit_msg:
 ; INT 21h system calls
 ;
 comboot_getkey:				; 01 = get key with echo
-		pm_call vgashowcursor
+		call vgashowcursor
 		call comboot_getchar
-		pm_call vgahidecursor
-		pm_call pm_writechr
+		call vgahidecursor
+		call writechr
 		clc
 		ret
 
 comboot_writechr:			; 02 = writechr
 		mov al,P_DL
-		pm_call pm_writechr
+		call writechr
 		clc
 		ret
 
 comboot_writeserial:			; 04 = write serial port
 		mov al,P_DL
-		pm_call pm_write_serial
+		call write_serial
 		clc
 		ret
 
@@ -250,7 +352,7 @@ comboot_writestr:			; 09 = write DOS string
 .loop:		es lodsb
 		cmp al,'$'		; End string with $ - bizarre
 		je .done
-		pm_call pm_writechr
+		call writechr
 		jmp short .loop
 .done:		clc
 		ret
@@ -258,7 +360,7 @@ comboot_writestr:			; 09 = write DOS string
 comboot_checkkey:			; 0B = check keyboard status
 		cmp byte [APIKeyFlag],00h
 		jnz .waiting
-		pm_call pm_pollchar
+		call pollchar
 .waiting:	setz al
 		dec al			; AL = 0FFh if present, 0 if not
 		mov P_AL,al
@@ -277,7 +379,7 @@ comboot_checkver:			; 30 = check DOS version
 comboot_getchar:
 		cmp byte [APIKeyFlag],00h
 		jne .queued
-		pm_call pm_getchar	; If not queued get input
+		call getchar		; If not queued get input
 		and al,al		; Function key?  (CF <- 0)
 		jnz .done
 		mov [APIKeyWait],ah	; High part of key
@@ -303,7 +405,7 @@ comboot_int28:
 comboot_int29:
 		sti
 		cld
-		pm_call pm_writechr
+		call writechr			; Preserves registers!
 		iret
 
 ;
@@ -323,7 +425,7 @@ comboot_int22:
 		mov es,bp
 		mov bp,sp			; Set up stack frame
 
-		pm_call pm_adjust_screen	; The COMBOOT program might hav changed the screen
+		call adjust_screen		; The COMBOOT program might have changed the screen
 
 		cmp ax,int22_count
 		jb .ok
@@ -340,6 +442,127 @@ comboot_int22:
 comapi_err:
 		stc
 		ret
+
+;
+; INT 22h AX=0001h	Get SYSLINUX version
+;
+comapi_get_version:
+		; Number of API functions supported
+		mov P_AX,int22_count
+		; SYSLINUX version
+		mov P_CX,(VERSION_MAJOR << 8)+VERSION_MINOR
+		; SYSLINUX derivative ID byte
+		mov P_DX,my_id
+		; For future use
+		mov P_BX,cs	; cs == 0
+
+		mov P_ES,ds
+		; ES:SI -> version banner
+		mov P_SI,syslinux_banner + 2	; Skip leading CR LF
+		; ES:DI -> copyright string
+		mov P_DI,copyright_str + 1	; Skip leading space
+
+comapi_nop:
+		clc
+		ret
+
+;
+; INT 22h AX=0002h	Write string
+;
+; Write null-terminated string in ES:BX
+;
+comapi_writestr:
+		mov ds,P_ES
+		mov si,P_BX
+		call writestr
+		clc
+		ret
+
+;
+; INT 22h AX=0003h	Run command
+;
+; Terminates the COMBOOT program and executes the command line in
+; ES:BX as if it had been entered by the user.
+;
+comapi_run:
+		mov ds,P_ES
+		mov si,P_BX
+		mov di,command_line
+		call strcpy
+		push load_kernel		; Run a new kernel
+		jmp comboot_exit		; Terminate task, clean up
+
+;
+; INT 22h AX=0004h	Run default command
+;
+; Terminates the COMBOOT program and executes the default command line
+; as if a timeout had happened or the user pressed <Enter>.
+;
+comapi_run_default:
+		push auto_boot
+		jmp comboot_exit
+
+;
+; INT 22h AX=0005h	Force text mode
+;
+; Puts the video in standard text mode
+;
+comapi_textmode:
+		call vgaclearmode
+		clc
+		ret
+
+;
+; INT 22h AX=0006h	Open file
+;
+comapi_open:
+		mov es,P_ES
+		mov si,P_SI
+		pm_call pm_open_file
+		mov P_EAX,eax
+		mov P_CX,cx
+		mov P_SI,si
+		ret
+
+;
+; INT 22h AX=0007h	Read file
+;
+comapi_read:
+		mov es,P_ES
+		mov bx,P_BX
+		mov si,P_SI
+		mov cx,P_CX
+		pm_call getfssec
+		jnc .noteof
+		xor si,si		; SI <- 0 on EOF, CF <- 0
+.noteof:	mov P_SI,si
+		mov P_ECX,ecx
+		ret
+
+;
+; INT 22h AX=0008h	Close file
+;
+comapi_close:
+		mov si,P_SI
+		pm_call pm_close_file
+		clc
+		ret
+
+;
+; INT 22h AX=0009h	Call PXE stack
+;
+%if IS_PXELINUX
+comapi_pxecall:
+		mov bx,P_BX
+		mov es,P_ES
+		mov di,P_DI
+		call pxenv
+		mov ax,[PXEStatus]
+		mov P_AX,ax
+		ret
+%else
+comapi_pxecall	equ comapi_err			; Not available
+%endif
 
 ;
 ; INT 22h AX=000Ah	Get Derivative-Specific Info
@@ -388,6 +611,243 @@ comapi_derinfo:
 		ret
 
 ;
+; INT 22h AX=000Bh	Get Serial Console Configuration
+;
+comapi_serialcfg:
+		mov ax,[SerialPort]
+		mov P_DX,ax
+		mov ax,[BaudDivisor]
+		mov P_CX,ax
+		mov ax,[FlowControl]
+		or al,ah
+		mov ah,[FlowIgnore]
+		shr ah,4
+		test byte [DisplayCon],01h
+		jnz .normalconsole
+		or ah,80h
+.normalconsole:
+		mov P_BX,ax
+		clc
+		ret
+
+;
+; INT 22h AX=000Ch	Perform final cleanup
+;
+comapi_cleanup:
+%if IS_PXELINUX
+		; Unload PXE if requested
+		test dl,3
+		setnz [KeepPXE]
+		sub bp,sp		; unload_pxe may move the stack around
+		pm_call unload_pxe
+		add bp,sp		; restore frame pointer...
+%elif IS_SYSLINUX || IS_EXTLINUX
+		; Restore original FDC table
+		mov eax,[OrigFDCTabPtr]
+		mov [fdctab],eax
+%endif
+		call cleanup_hardware
+		clc
+		ret
+
+;
+; INT 22h AX=000Dh	Obsolete
+;
+
+;
+; INT 22h AX=000Eh	Get configuration file name
+;
+comapi_configfile:
+		mov P_ES,cs
+		mov P_BX,ConfigName
+		clc
+		ret
+
+;
+; INT 22h AX=000Fh	Get IPAPPEND strings
+;
+comapi_ipappend:
+		mov P_ES,cs
+		mov P_CX,numIPAppends
+		mov P_BX,IPAppends
+		clc
+		ret
+
+;
+; INT 22h AX=0010h	Resolve hostname
+;
+%if IS_PXELINUX
+                extern pxe_dns_resolv
+comapi_dnsresolv:
+		mov ds,P_ES
+		mov si,P_BX
+		pm_call pxe_dns_resolv
+		mov P_EAX,eax
+		clc
+		ret
+%else
+comapi_dnsresolv equ comapi_err
+%endif
+
+		section .text16
+
+;
+; INT 22h AX=0011h	Obsolete
+;
+
+;
+; INT 22h AX=0012h	Obsolete
+;
+
+;
+; INT 22h AX=0013h	Idle call
+;
+comapi_idle:
+		call do_idle
+		clc
+		ret
+
+;
+; INT 22h AX=0014h	Local boot
+;
+comapi_localboot:
+		mov ax,P_DX
+		jmp local_boot
+
+;
+; INT 22h AX=0015h	Feature flags
+;
+comapi_features:
+		mov P_ES,cs
+		mov P_BX,feature_flags
+		mov P_CX,feature_flags_len
+		clc
+		ret
+
+;
+; INT 22h AX=0016h	Run kernel image
+;
+comapi_runkernel:
+		mov al,P_DL
+		cmp al,VK_TYPES-1
+		ja .error
+		mov [KernelType],al
+
+		; It's not just possible, but quite likely, that ES:BX
+		; points into real_mode_seg or xfer_buf_seg, so we
+		; need to exercise some special care here... use
+		; VKernelBuf for temporary storage.
+		push ds
+		mov ds,P_ES
+		mov si,P_BX
+		mov di,VKernelBuf
+		call strcpy
+		pop ds
+
+		push ds
+		mov ds,P_DS
+		mov si,P_SI
+		mov di,KernelName
+		pm_call pm_mangle_name
+		pop ds
+		pm_call pm_searchdir
+		jz comapi_err
+
+		; The kernel image was found, so we can load it...
+		mov [Kernel_SI],si
+		mov [Kernel_EAX],eax
+
+%if IS_PXELINUX
+		mov al,P_CL
+		mov [IPAppend],al
+%endif
+
+		call comboot_exit
+
+.finish:
+		; Copy the command line into its proper place
+		push es
+		mov dx,real_mode_seg
+		mov es,dx
+		mov si,VKernelBuf
+		mov di,cmd_line_here
+		call strcpy
+		mov word [es:di-1],' '	; Simulate APPEND: space plus null
+		pop es
+		mov [CmdLinePtr],di
+		mov word [CmdOptPtr],zero_string
+		jmp kernel_good_saved
+
+.error		equ comapi_usingvga.error
+
+;
+; INT 22h AX=0017h  Report video mode change
+;
+comapi_usingvga:
+		mov ax,P_BX
+		cmp ax,0Fh		; Unknown flags = failure
+		ja .error
+		mov [UsingVGA],al
+		mov cx,P_CX
+		mov dx,P_DX
+		mov [GXPixCols],cx
+		mov [GXPixRows],dx
+		test al,08h
+		jnz .notext
+		call adjust_screen
+.notext:
+		clc
+		ret
+.error:
+		stc
+		ret
+
+;
+; INT 22h AX=0018h  Query custom font
+;
+comapi_userfont:
+		mov al,[UserFont]
+		and al,al
+		jz .done
+		mov al,[VGAFontSize]
+		mov P_ES,aux_seg
+		mov P_BX,aux.fontbuf
+
+.done:		; CF=0 here
+		mov P_AL,al
+		ret
+
+;
+; INT 22h AX=0019h  Read disk
+;
+%if IS_SYSLINUX || IS_ISOLINUX || IS_EXTLINUX
+comapi_readdisk:
+		cmp P_EDI,0		; Reserved for future expansion
+		jnz .err
+		mov eax,P_EDX
+		mov edx,P_ESI
+		mov es,P_ES
+		mov bx,P_BX
+		mov bp,P_CX		; WE CANNOT use P_* after touching bp!
+		call getlinsec
+		clc
+		ret
+.err:
+		stc
+		ret
+%else
+comapi_readdisk	equ comapi_err
+%endif
+
+;
+; INT 22h AX=001Ah	Obsolete
+;
+
+;
+; INT 22h AX=001Bh	Obsolete
+;
+
+;
 ; INT 22h AX=001Ch	Get pointer to auxillary data vector
 ;
 comapi_getadv:
@@ -402,82 +862,121 @@ comapi_getadv:
 comapi_writeadv	equ adv_write
 
 ;
+; INT 22h AX=001Eh	Keyboard remapping table
+comapi_kbdtable:
+		cmp P_DX,0
+		jne .err
+		mov P_AX,1			; Version
+		mov P_CX,256			; Length
+		mov P_ES,cs
+		mov P_BX,KbdMap
+		ret
+.err:
+		stc
+		ret
+
+;
+; INT 22h AX=001Fh	Get current working directory
+;
+comapi_getcwd:
+		mov P_ES,cs
+		mov P_BX,CurrentDirName
+		clc
+		ret
+
+;
+; INT 22h AX=0023h	Query shuffler size
+;
+comapi_shufsize:
+		; +15 is padding to guarantee alignment
+		mov P_CX,__bcopyxx_len + 15
+		ret
+
+;
 ; INT 22h AX=0024h	Cleanup, shuffle and boot raw
 ;
 comapi_shufraw:
-%if IS_PXELINUX
-		; Unload PXE if requested
-		test dl,3
-		setnz [KeepPXE]
-		sub bp,sp               ; unload_pxe may move the stack around
-		pm_call unload_pxe
-		add bp,sp               ; restore frame pointer...
-%elif IS_SYSLINUX || IS_EXTLINUX
-		; Restore original FDC table
-		mov eax,[OrigFDCTabPtr]
-		mov [fdctab],eax
-%endif
-		pm_call cleanup_hardware
+		call comapi_cleanup
 		mov edi,P_EDI
 		mov esi,P_ESI
 		mov ecx,P_ECX
 		jmp shuffle_and_boot_raw
 
-;
-; INT 22h AX=0025h	Initialize the ADV structure
-;
-comapi_initadv:
-		call adv_init
-		ret
-
 		section .data16
+
+%macro		int21 2
+		db %1
+		dw %2
+%endmacro
+
+int21_table:
+		int21	00h, comboot_return
+		int21	01h, comboot_getkey
+		int21	02h, comboot_writechr
+		int21	04h, comboot_writeserial
+		int21	08h, comboot_getkeynoecho
+		int21	09h, comboot_writestr
+		int21	0Bh, comboot_checkkey
+		int21	30h, comboot_checkver
+		int21	4Ch, comboot_return
+		int21	 -1, comboot_bad_int21
+int21_count	equ ($-int21_table)/3
 
 		alignz 2
 int22_table:
 		dw comapi_err		; 0000 unimplemented syscall
-		dw comapi_err		; 0001 get SYSLINUX version
-		dw comapi_err		; 0002 write string
-		dw comapi_err		; 0003 run specified command
-		dw comapi_err		; 0004 run default command
-		dw comapi_err		; 0005 force text mode
-		dw comapi_err		; 0006 open file
-		dw comapi_err		; 0007 read file
-		dw comapi_err		; 0008 close file
-		dw comapi_err		; 0009 call PXE stack
+		dw comapi_get_version	; 0001 get SYSLINUX version
+		dw comapi_writestr	; 0002 write string
+		dw comapi_run		; 0003 run specified command
+		dw comapi_run_default	; 0004 run default command
+		dw comapi_textmode	; 0005 force text mode
+		dw comapi_open		; 0006 open file
+		dw comapi_read		; 0007 read file
+		dw comapi_close		; 0008 close file
+		dw comapi_pxecall	; 0009 call PXE stack
 		dw comapi_derinfo	; 000A derivative-specific info
-		dw comapi_err		; 000B get serial port config
-		dw comapi_err		; 000C perform final cleanup
+		dw comapi_serialcfg	; 000B get serial port config
+		dw comapi_cleanup	; 000C perform final cleanup
 		dw comapi_err		; 000D clean up then bootstrap
-		dw comapi_err		; 000E get name of config file
-		dw comapi_err		; 000F get ipappend strings
-		dw comapi_err		; 0010 resolve hostname
+		dw comapi_configfile	; 000E get name of config file
+		dw comapi_ipappend	; 000F get ipappend strings
+		dw comapi_dnsresolv	; 0010 resolve hostname
 		dw comapi_err		; 0011 maximum shuffle descriptors
 		dw comapi_err		; 0012 cleanup, shuffle and boot
-		dw comapi_err		; 0013 idle call
-		dw comapi_err		; 0014 local boot
-		dw comapi_err		; 0015 feature flags
-		dw comapi_err		; 0016 run kernel image
-		dw comapi_err		; 0017 report video mode change
-		dw comapi_err		; 0018 query custom font
-		dw comapi_err		; 0019 read disk
+		dw comapi_idle		; 0013 idle call
+		dw comapi_localboot	; 0014 local boot
+		dw comapi_features	; 0015 feature flags
+		dw comapi_runkernel	; 0016 run kernel image
+		dw comapi_usingvga	; 0017 report video mode change
+		dw comapi_userfont	; 0018 query custom font
+		dw comapi_readdisk	; 0019 read disk
 		dw comapi_err		; 001A cleanup, shuffle and boot to pm
 		dw comapi_err		; 001B cleanup, shuffle and boot to rm
 		dw comapi_getadv	; 001C get pointer to ADV
 		dw comapi_writeadv	; 001D write ADV to disk
-		dw comapi_err		; 001E keyboard remapping table
-		dw comapi_err		; 001F get current working directory
+		dw comapi_kbdtable	; 001E keyboard remapping table
+		dw comapi_getcwd	; 001F get current working directory
 		dw comapi_err		; 0020 open directory
 		dw comapi_err		; 0021 read directory
 		dw comapi_err		; 0022 close directory
-		dw comapi_err		; 0023 query shuffler size
+		dw comapi_shufsize	; 0023 query shuffler size
 		dw comapi_shufraw	; 0024 cleanup, shuffle and boot raw
-		dw comapi_initadv	; 0025 initialize adv structure
 int22_count	equ ($-int22_table)/2
 
 APIKeyWait	db 0
 APIKeyFlag	db 0
 
 zero_string	db 0			; Empty, null-terminated string
+
+;
+; This is the feature flag array for INT 22h AX=0015h
+;
+; Note: PXELINUX clears the idle is noop flag if appropriate
+; in pxe_detect_nic_type
+;
+feature_flags:
+		db 1			; Have local boot, idle is not noop
+feature_flags_len equ ($-feature_flags)
 
 err_notdos	db ': attempted DOS system call INT ',0
 err_comlarge	db 'COMBOOT image too large.', CR, LF, 0
@@ -486,7 +985,9 @@ err_comlarge	db 'COMBOOT image too large.', CR, LF, 0
 		alignb 4
 DOSErrTramp	resd	33		; Error trampolines
 
+		global ConfigName
+ConfigName	resb	FILENAME_MAX
 %ifndef HAVE_CURRENTDIRNAME
-		global CurrentDirName:data hidden
+		global CurrentDirName
 CurrentDirName	resb	FILENAME_MAX
 %endif

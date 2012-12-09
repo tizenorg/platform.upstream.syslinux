@@ -17,7 +17,7 @@
 
 topdir = ../..
 MAKEDIR = $(topdir)/mk
-include $(MAKEDIR)/elf.mk
+include $(MAKEDIR)/com32.mk
 
 LNXLIBS	   = ../libutil/libutil_lnx.a
 
@@ -28,7 +28,7 @@ OBJS = mboot.o map.o mem.o initvesa.o apm.o solaris.o syslinux.o
 
 all: $(MODULES) $(TESTFILES)
 
-mboot.c32 : $(OBJS) $(C_LIBS)
+mboot.elf : $(OBJS) $(C_LIBS)
 	$(LD) $(LDFLAGS) -o $@ $^
 
 tidy dist:

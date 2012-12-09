@@ -31,18 +31,24 @@
  */
 
 #include <syslinux/video.h>
-#include <graphics.h>
+#include <com32.h>
 
 /*
  * Returns height of font or zero if no custom font loaded
  */
 int syslinux_font_query(uint8_t **font)
 {
-    if (!UserFont)
-	return 0;
+    static com32sys_t ireg;
+    com32sys_t oreg;
+    int height;
 
-    *font = (uint8_t *)fontbuf;
+    ireg.eax.w[0] = 0x0018;
+    __intcall(0x22, &ireg, &oreg);
 
-    return VGAFontSize;
+    height = !(oreg.eflags.l & EFLAGS_CF) ? oreg.eax.b[0] : 0;
+    if (height)
+	*font = MK_PTR(oreg.es, oreg.ebx.w[0]);
+
+    return height;
 }
 

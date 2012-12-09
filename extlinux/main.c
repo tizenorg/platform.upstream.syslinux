@@ -14,8 +14,7 @@
 /*
  * extlinux.c
  *
- * Install the syslinux boot block on an fat, ntfs, ext2/3/4, btrfs and xfs
- * filesystem.
+ * Install the syslinux boot block on an fat, ntfs, ext2/3/4 and btrfs filesystem
  */
 
 #define  _GNU_SOURCE		/* Enable everything */
@@ -47,10 +46,6 @@
 #include "btrfs.h"
 #include "fat.h"
 #include "ntfs.h"
-#include "xfs.h"
-#include "xfs_types.h"
-#include "xfs_sb.h"
-#include "misc.h"
 #include "../version.h"
 #include "syslxint.h"
 #include "syslxcom.h" /* common functions shared with extlinux and syslinux */
@@ -68,13 +63,6 @@
 #ifndef EXT2_SUPER_OFFSET
 #define EXT2_SUPER_OFFSET 1024
 #endif
-
-/* Since we have unused 2048 bytes in the primary AG of an XFS partition,
- * we will use the first 0~512 bytes starting from 2048 for the Syslinux
- * boot sector.
- */
-#define XFS_BOOTSECT_OFFSET	(4 << SECTOR_SHIFT)
-#define XFS_SUPPORTED_BLOCKSIZE 4096 /* 4 KiB filesystem block size */
 
 /* the btrfs partition first 64K blank area is used to store boot sector and
    boot image, the boot sector is from 0~512, the boot image starts after */
@@ -307,8 +295,7 @@ static int patch_file_and_bootblock(int fd, const char *dir, int devfd)
     nsect = (boot_image_len + SECTOR_SIZE - 1) >> SECTOR_SHIFT;
     nsect += 2;			/* Two sectors for the ADV */
     sectp = alloca(sizeof(sector_t) * nsect);
-    if (fs_type == EXT2 || fs_type == VFAT || fs_type == NTFS ||
-	fs_type == XFS) {
+    if (fs_type == EXT2 || fs_type == VFAT || fs_type == NTFS) {
 	if (sectmap(fd, sectp, nsect)) {
 		perror("bmap");
 		exit(1);
@@ -341,7 +328,6 @@ int install_bootblock(int fd, const char *device)
     struct btrfs_super_block sb2;
     struct fat_boot_sector sb3;
     struct ntfs_boot_sector sb4;
-    xfs_sb_t sb5;
     bool ok = false;
 
     if (fs_type == EXT2) {
@@ -349,7 +335,6 @@ int install_bootblock(int fd, const char *device)
 		perror("reading superblock");
 		return 1;
 	}
-
 	if (sb.s_magic == EXT2_SUPER_MAGIC)
 		ok = true;
     } else if (fs_type == BTRFS) {
@@ -365,7 +350,6 @@ int install_bootblock(int fd, const char *device)
 		perror("reading fat superblock");
 		return 1;
 	}
-
 	if (fat_check_sb_fields(&sb3))
 		ok = true;
     } else if (fs_type == NTFS) {
@@ -376,34 +360,12 @@ int install_bootblock(int fd, const char *device)
 
         if (ntfs_check_sb_fields(&sb4))
              ok = true;
-    } else if (fs_type == XFS) {
-	if (xpread(fd, &sb5, sizeof sb5, 0) != sizeof sb5) {
-	    perror("reading xfs superblock");
-	    return 1;
-	}
-
-	if (sb5.sb_magicnum == *(u32 *)XFS_SB_MAGIC) {
-	    if (be32_to_cpu(sb5.sb_blocksize) != XFS_SUPPORTED_BLOCKSIZE) {
-		fprintf(stderr,
-			"You need to have 4 KiB filesystem block size for "
-			" being able to install Syslinux in your XFS "
-			"partition (because there is no enough space in MBR to "
-			"determine where Syslinux bootsector can be installed "
-			"regardless the filesystem block size)\n");
-		return 1;
-	    }
-
-	    ok = true;
-	}
     }
-
     if (!ok) {
-	fprintf(stderr,
-		"no fat, ntfs, ext2/3/4, btrfs or xfs superblock found on %s\n",
-		device);
+	fprintf(stderr, "no fat, ntfs, ext2/3/4 or btrfs superblock found on %s\n",
+			device);
 	return 1;
     }
-
     if (fs_type == VFAT) {
 	struct fat_boot_sector *sbs = (struct fat_boot_sector *)syslinux_bootsect;
         if (xpwrite(fd, &sbs->FAT_bsHead, FAT_bsHeadLen, 0) != FAT_bsHeadLen ||
@@ -423,12 +385,6 @@ int install_bootblock(int fd, const char *device)
             perror("writing ntfs bootblock");
             return 1;
         }
-    } else if (fs_type == XFS) {
-	if (xpwrite(fd, syslinux_bootsect, syslinux_bootsect_len,
-		    XFS_BOOTSECT_OFFSET) != syslinux_bootsect_len) {
-	    perror("writing xfs bootblock");
-	    return 1;
-	}
     } else {
 	if (xpwrite(fd, syslinux_bootsect, syslinux_bootsect_len, 0)
 	    != syslinux_bootsect_len) {
@@ -440,70 +396,18 @@ int install_bootblock(int fd, const char *device)
     return 0;
 }
 
-static int rewrite_boot_image(int devfd, const char *filename)
-{
-    int fd;
-    int ret;
-    int modbytes;
-    char path[PATH_MAX];
-    char slash;
-
-    /* Let's create LDLINUX.SYS file again (if it already exists, of course) */
-    fd = open(filename,  O_WRONLY | O_TRUNC | O_CREAT | O_SYNC,
-	      S_IRUSR | S_IRGRP | S_IROTH);
-    if (fd < 0) {
-	perror(filename);
-	return -1;
-    }
-
-    /* Write boot image data into LDLINUX.SYS file */
-    ret = xpwrite(fd, boot_image, boot_image_len, 0);
-    if (ret != boot_image_len) {
-	perror("writing bootblock");
-	goto error;
-    }
-
-    /* Write ADV */
-    ret = xpwrite(fd, syslinux_adv, 2 * ADV_SIZE, boot_image_len);
-    if (ret != 2 * ADV_SIZE) {
-	fprintf(stderr, "%s: write failure on %s\n", program, filename);
-	goto error;
-    }
-
-    sscanf(filename, "%s%cldlinux.sys", path, &slash);
-
-    /* Map the file, and patch the initial sector accordingly */
-    modbytes = patch_file_and_bootblock(fd, path, devfd);
-
-    /* Write the patch area again - this relies on the file being overwritten
-     * in place! */
-    ret = xpwrite(fd, boot_image, modbytes, 0);
-    if (ret != modbytes) {
-	fprintf(stderr, "%s: write failure on %s\n", program, filename);
-	goto error;
-    }
-
-    return fd;
-
-error:
-    close(fd);
-
-    return -1;
-}
-
 int ext2_fat_install_file(const char *path, int devfd, struct stat *rst)
 {
-    char *file, *oldfile, *c32file;
+    char *file, *oldfile;
     int fd = -1, dirfd = -1;
-    int r1, r2, r3;
+    int modbytes;
+    int r1, r2;
 
     r1 = asprintf(&file, "%s%sldlinux.sys",
 		  path, path[0] && path[strlen(path) - 1] == '/' ? "" : "/");
     r2 = asprintf(&oldfile, "%s%sextlinux.sys",
 		  path, path[0] && path[strlen(path) - 1] == '/' ? "" : "/");
-    r3 = asprintf(&c32file, "%s%sldlinux.c32",
-		  path, path[0] && path[strlen(path) - 1] == '/' ? "" : "/");
-    if (r1 < 0 || !file || r2 < 0 || !oldfile || r3 < 0 || !c32file) {
+    if (r1 < 0 || !file || r2 < 0 || !oldfile) {
 	perror(program);
 	return 1;
     }
@@ -525,9 +429,30 @@ int ext2_fat_install_file(const char *path, int devfd, struct stat *rst)
     }
     close(fd);
 
-    fd = rewrite_boot_image(devfd, file);
-    if (fd < 0)
+    fd = open(file, O_WRONLY | O_TRUNC | O_CREAT | O_SYNC,
+	      S_IRUSR | S_IRGRP | S_IROTH);
+    if (fd < 0) {
+	perror(file);
 	goto bail;
+    }
+
+    /* Write it the first time */
+    if (xpwrite(fd, boot_image, boot_image_len, 0) != boot_image_len ||
+	xpwrite(fd, syslinux_adv, 2 * ADV_SIZE,
+		boot_image_len) != 2 * ADV_SIZE) {
+	fprintf(stderr, "%s: write failure on %s\n", program, file);
+	goto bail;
+    }
+
+    /* Map the file, and patch the initial sector accordingly */
+    modbytes = patch_file_and_bootblock(fd, path, devfd);
+
+    /* Write the patch area again - this relies on the file being
+       overwritten in place! */
+    if (xpwrite(fd, boot_image, modbytes, 0) != modbytes) {
+	fprintf(stderr, "%s: write failure on %s\n", program, file);
+	goto bail;
+    }
 
     /* Attempt to set immutable flag and remove all write access */
     /* Only set immutable flag if file is owned by root */
@@ -549,22 +474,8 @@ int ext2_fat_install_file(const char *path, int devfd, struct stat *rst)
 	unlink(oldfile);
     }
 
-    fd = open(c32file, O_WRONLY | O_TRUNC | O_CREAT | O_SYNC,
-	      S_IRUSR | S_IRGRP | S_IROTH);
-    if (fd < 0) {
-	perror(c32file);
-	goto bail;
-    }
-
-    r3 = xpwrite(fd, syslinux_ldlinuxc32, syslinux_ldlinuxc32_len, 0);
-    if (r3 != syslinux_ldlinuxc32_len) {
-	fprintf(stderr, "%s: write failure on %s\n", program, c32file);
-	goto bail;
-    }
-
     free(file);
     free(oldfile);
-    free(c32file);
     return 0;
 
 bail:
@@ -575,7 +486,6 @@ bail:
 
     free(file);
     free(oldfile);
-    free(c32file);
     return 1;
 }
 
@@ -584,9 +494,6 @@ bail:
    since the cow feature of btrfs will move the ldlinux.sys every where */
 int btrfs_install_file(const char *path, int devfd, struct stat *rst)
 {
-    char *file;
-    int fd, rv;
-
     patch_file_and_bootblock(-1, path, devfd);
     if (xpwrite(devfd, boot_image, boot_image_len, BTRFS_EXTLINUX_OFFSET)
 		!= boot_image_len) {
@@ -604,101 +511,7 @@ int btrfs_install_file(const char *path, int devfd, struct stat *rst)
 	perror(path);
 	return 1;
     }
-
-    /*
-     * Note that we *can* install ldinux.c32 as a regular file because
-     * it doesn't need to be within the first 64K. The Syslinux core
-     * has enough smarts to search the btrfs dirs and find this file.
-     */
-    rv = asprintf(&file, "%s%sldlinux.c32",
-		  path, path[0] && path[strlen(path) - 1] == '/' ? "" : "/");
-    if (rv < 0 || !file) {
-	perror(program);
-	return 1;
-    }
-
-    fd = open(file, O_WRONLY | O_TRUNC | O_CREAT | O_SYNC,
-	      S_IRUSR | S_IRGRP | S_IROTH);
-    if (fd < 0) {
-	perror(file);
-	free(file);
-	return 1;
-    }
-
-    rv = xpwrite(fd, syslinux_ldlinuxc32, syslinux_ldlinuxc32_len, 0);
-    if (rv != (int)syslinux_ldlinuxc32_len) {
-	fprintf(stderr, "%s: write failure on %s\n", program, file);
-	rv = 1;
-    } else
-	rv = 0;
-
-    close(fd);
-    free(file);
-    return rv;
-}
-
-/*
- * Due to historical reasons (SGI IRIX's design of disk layouts), the first
- * sector in the primary AG on XFS filesystems contains the superblock, which is
- * a problem with bootloaders that rely on BIOSes (that load VBRs which are
- * (located in the first sector of the partition).
- *
- * Thus, we need to handle this issue, otherwise Syslinux will damage the XFS's
- * superblock.
- */
-static int xfs_install_file(const char *path, int devfd, struct stat *rst)
-{
-    static char file[PATH_MAX];
-    int dirfd = -1;
-    int fd = -1;
-
-    snprintf(file, PATH_MAX, "%s%sldlinux.sys",
-	     path, path[0] && path[strlen(path) - 1] == '/' ? "" : "/");
-
-    dirfd = open(path, O_RDONLY | O_DIRECTORY);
-    if (dirfd < 0) {
-	perror(path);
-	goto bail;
-    }
-
-    fd = open(file, O_RDONLY);
-    if (fd < 0) {
-	if (errno != ENOENT) {
-	    perror(file);
-	    goto bail;
-	}
-    } else {
-	clear_attributes(fd);
-    }
-
-    close(fd);
-
-    fd = rewrite_boot_image(devfd, file);
-    if (fd < 0)
-	goto bail;
-
-    /* Attempt to set immutable flag and remove all write access */
-    /* Only set immutable flag if file is owned by root */
-    set_attributes(fd);
-
-    if (fstat(fd, rst)) {
-	perror(file);
-	goto bail;
-    }
-
-    close(dirfd);
-    close(fd);
-
     return 0;
-
-bail:
-    if (dirfd >= 0)
-	close(dirfd);
-
-    if (fd >= 0)
-	close(fd);
-
-    return 1;
 }
 
 /*
@@ -935,14 +748,11 @@ static char * get_default_subvol(char * rootdir, char * subvol)
 
 static int install_file(const char *path, int devfd, struct stat *rst)
 {
-    if (fs_type == EXT2 || fs_type == VFAT || fs_type == NTFS)
-	return ext2_fat_install_file(path, devfd, rst);
-    else if (fs_type == BTRFS)
-	return btrfs_install_file(path, devfd, rst);
-    else if (fs_type == XFS)
-	return xfs_install_file(path, devfd, rst);
-
-    return 1;
+	if (fs_type == EXT2 || fs_type == VFAT || fs_type == NTFS)
+		return ext2_fat_install_file(path, devfd, rst);
+	else if (fs_type == BTRFS)
+		return btrfs_install_file(path, devfd, rst);
+	return 1;
 }
 
 #ifdef __KLIBC__
@@ -1037,22 +847,14 @@ static const char *find_device(const char *mtab_file, dev_t dev)
 	    }
 
 	    break;
-	case XFS:
-	    if (!strcmp(mnt->mnt_type, "xfs") && !stat(mnt->mnt_fsname, &dst) &&
-		dst.st_rdev == dev) {
-		done = true;
-		break;
-	    }
 	case NONE:
 	    break;
 	}
-
 	if (done) {
 	    devname = strdup(mnt->mnt_fsname);
 	    break;
 	}
     }
-
     endmntent(mtab);
 
     return devname;
@@ -1113,8 +915,6 @@ static const char *find_device_mountinfo(const char *path, dev_t dev)
     struct stat st;
 
     m = find_mount(path, NULL);
-    if (!m)
-	return NULL;
 
     if (m->devpath[0] == '/' && m->dev == dev &&
 	!stat(m->devpath, &st) && S_ISBLK(st.st_mode) && st.st_rdev == dev)
@@ -1298,7 +1098,6 @@ static int open_device(const char *path, struct stat *st, const char **_devname)
 	fprintf(stderr, "%s: statfs %s: %s\n", program, path, strerror(errno));
 	return -1;
     }
-
     if (sfs.f_type == EXT2_SUPER_MAGIC)
 	fs_type = EXT2;
     else if (sfs.f_type == BTRFS_SUPER_MAGIC)
@@ -1307,13 +1106,10 @@ static int open_device(const char *path, struct stat *st, const char **_devname)
 	fs_type = VFAT;
     else if (sfs.f_type == NTFS_SB_MAGIC ||
                 sfs.f_type == FUSE_SUPER_MAGIC /* ntfs-3g */)
-	fs_type = NTFS;
-    else if (sfs.f_type == XFS_SUPER_MAGIC)
-	fs_type = XFS;
+        fs_type = NTFS;
 
     if (!fs_type) {
-	fprintf(stderr,
-		"%s: not a fat, ntfs, ext2/3/4, btrfs or xfs filesystem: %s\n",
+	fprintf(stderr, "%s: not a fat, ntfs, ext2/3/4 or btrfs filesystem: %s\n",
 		program, path);
 	return -1;
     }
@@ -1347,16 +1143,6 @@ static int btrfs_read_adv(int devfd)
     return syslinux_validate_adv(syslinux_adv) ? 1 : 0;
 }
 
-static inline int xfs_read_adv(int devfd)
-{
-    const size_t adv_size = 2 * ADV_SIZE;
-
-    if (xpread(devfd, syslinux_adv, adv_size, boot_image_len) != adv_size)
-	return -1;
-
-    return syslinux_validate_adv(syslinux_adv) ? 1 : 0;
-}
-
 static int ext_read_adv(const char *path, int devfd, const char **namep)
 {
     int err;
@@ -1365,9 +1151,6 @@ static int ext_read_adv(const char *path, int devfd, const char **namep)
     if (fs_type == BTRFS) {
 	/* btrfs "ldlinux.sys" is in 64k blank area */
 	return btrfs_read_adv(devfd);
-    } else if (fs_type == XFS) {
-	/* XFS "ldlinux.sys" is in the first 2048 bytes of the primary AG */
-	return xfs_read_adv(devfd);
     } else {
 	err = read_adv(path, name = "ldlinux.sys");
 	if (err == 2)		/* ldlinux.sys does not exist */
@@ -1453,7 +1236,9 @@ int modify_existing_adv(const char *path)
     if (devfd < 0)
 	return 1;
 
-    if (ext_read_adv(path, devfd, &filename) < 0) {
+    if (opt.reset_adv)
+	syslinux_reset_adv(syslinux_adv);
+    else if (ext_read_adv(path, devfd, &filename) < 0) {
 	close(devfd);
 	return 1;
     }

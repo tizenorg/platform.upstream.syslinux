@@ -52,6 +52,7 @@ LATEBSS_START	equ 0B800h
 ;
 ; 32-bit stack layout
 ;
+		global STACK32_LEN
 STACK32_LEN	equ 64*1024
 
 		section	.stack		nobits write align=4096
@@ -96,8 +97,6 @@ RBFG_brainfuck:	resb 2048		; Bigger than an Ethernet packet...
 		; the spillover from the last fractional sector load.
 		section .uibss		write nobits align=16
 
-		section .savedata	write nobits align=16
-
 		; Symbols from linker script
 %macro SECINFO 1
 		extern __%1_start, __%1_lma, __%1_end
@@ -129,12 +128,27 @@ RBFG_brainfuck:	resb 2048		; Bigger than an Ethernet packet...
 serial_buf_size	equ 4096		; Should be a power of 2
 
 ;
+; Contents of aux_seg
+;
+		extern aux_seg		; Actual segment assigned by linker
+
+		struc aux
+.fontbuf	resb 8192
+.serial		resb serial_buf_size
+
+		alignb 4096		; Align the next segment to 4K
+		endstruc
+
+		section .auxseg		write nobits align=16
+auxseg		resb aux_size
+
+;
 ; Transfer buffer segment: guaranteed to be aligned 64K, used for disk I/O
 ; One symbol for the segment number, one for the absolute address
 ;
 		extern	xfer_buf_seg
 		section .xfer_buf	write nobits align=65536
-		global	core_xfer_buf:data hidden
+		global	core_xfer_buf
 core_xfer_buf	resb 65536
 
 ;
@@ -144,7 +158,7 @@ core_xfer_buf	resb 65536
 ;
 		extern	real_mode_seg
 		section .real_mode	write nobits align=65536
-		global	core_real_mode:data hidden
+		global	core_real_mode
 core_real_mode	resb 65536
 comboot_seg	equ real_mode_seg	; COMBOOT image loading zone
 

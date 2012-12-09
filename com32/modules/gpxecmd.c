@@ -22,9 +22,7 @@
 #include <console.h>
 #include <com32.h>
 #include <string.h>
-
 #include <sys/gpxe.h>
-#include <syslinux/pxe_api.h>
 
 struct segoff16 {
     uint16_t offs, seg;
@@ -39,11 +37,11 @@ static void gpxecmd(const char **args)
 {
     char *q;
     struct s_PXENV_FILE_EXEC *fx;
+    com32sys_t reg;
 
-    fx = lmalloc(sizeof *fx);
-    if (!fx)
-	return;
+    memset(&reg, 0, sizeof reg);
 
+    fx = __com32.cs_bounce;
     q = (char *)(fx + 1);
 
     fx->Status = 1;
@@ -57,13 +55,21 @@ static void gpxecmd(const char **args)
     }
     *--q = '\0';
 
-    pxe_call(PXENV_FILE_EXEC, fx);
+    memset(&reg, 0, sizeof reg);
+    reg.eax.w[0] = 0x0009;
+    reg.ebx.w[0] = 0x00e5;	/* PXENV_FILE_EXEC */
+    reg.edi.w[0] = OFFS(fx);
+    reg.es = SEG(fx);
+
+    __intcall(0x22, &reg, &reg);
 
     /* This should not return... */
 }
 
 int main(int argc, const char *argv[])
 {
+    openconsole(&dev_null_r, &dev_stdcon_w);
+
     if (argc < 2) {
 	printf("Usage: gpxecmd command...\n");
 	return 1;

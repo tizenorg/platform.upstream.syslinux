@@ -17,10 +17,9 @@
 
 topdir = ../..
 MAKEDIR = $(topdir)/mk
-include $(MAKEDIR)/elf.mk
+include $(MAKEDIR)/com32.mk
 
-LIBS      = ../libupload/libcom32upload.a
-C_LIBS    += $(com32)/cmenu/libmenu/libmenu.c32
+LIBS      = ../cmenu/libmenu/libmenu.a ../libupload/libcom32upload.a
 CFLAGS    += -I$(com32)/cmenu/libmenu -I$(com32)
 
 MODULES	  = hdt.c32
@@ -52,7 +51,7 @@ QEMU			?= qemu-kvm
 
 all: $(MODULES) $(TESTFILES)
 
-hdt.c32 : $(OBJS) $(LIBS) $(C_LIBS)
+hdt.elf : $(OBJS) $(LIBS) $(C_LIBS)
 	$(LD) $(LDFLAGS) -o $@ $^
 
 memtest:

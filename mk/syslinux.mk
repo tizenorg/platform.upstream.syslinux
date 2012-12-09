@@ -36,7 +36,6 @@ NASM	 = nasm
 NASMOPT  = -Ox
 
 PERL	 = perl
-PYTHON	 = python
 UPX	 = upx
 
 CHMOD	 = chmod
@@ -51,7 +50,6 @@ gcc_ok   = $(shell tmpf=gcc_ok.$$$$.tmp; \
 LD	 = ld
 OBJDUMP	 = objdump
 OBJCOPY  = objcopy
-STRIP    = strip
 AR       = ar
 NM       = nm
 RANLIB   = ranlib

@@ -1,15 +1,13 @@
-#include <string.h>
-
 #include <sys/gpxe.h>
 #include <syslinux/config.h>
-#include <syslinux/pxe_api.h>
+#include <string.h>
 
 bool is_gpxe(void)
 {
     const struct syslinux_version *sv;
+    com32sys_t reg;
     struct s_PXENV_FILE_CHECK_API *fca;
     bool gpxe;
-    int err;
 
     sv = syslinux_version();
     if (sv->filesystem != SYSLINUX_FS_PXELINUX)
@@ -18,18 +16,23 @@ bool is_gpxe(void)
     fca = lzalloc(sizeof *fca);
     if (!fca)
 	return false;
-
     fca->Size = sizeof *fca;
     fca->Magic = 0x91d447b2;
 
-    err = pxe_call(PXENV_FILE_API_CHECK, fca);
+    memset(&reg, 0, sizeof reg);
+    reg.eax.w[0] = 0x0009;
+    reg.ebx.w[0] = 0x00e6;      /* PXENV_FILE_API_CHECK */
+    /* reg.edi.w[0] = OFFS(fca); */
+    reg.es = SEG(fca);
+
+    __intcall(0x22, &reg, &reg);
 
     gpxe = true;
 
-    if (err)
+    if (reg.eflags.l & EFLAGS_CF)
 	gpxe = false;           /* Cannot invoke PXE stack */
 
-    if (fca->Status)
+    if (reg.eax.w[0] || fca->Status)
         gpxe = false;           /* PXE failure */
 
     if (fca->Magic != 0xe9c17b20)

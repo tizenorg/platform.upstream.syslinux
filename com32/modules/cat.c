@@ -9,6 +9,8 @@ int main(int argc, char *argv[])
     int len;
     char buf[4096];
 
+    openconsole(&dev_stdcon_r, &dev_stdcon_w);
+
     if (argc < 2) {
 	fprintf(stderr, "Usage: %s filename...\n", argv[0]);
 	return 1;

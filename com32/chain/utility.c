@@ -4,9 +4,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <string.h>
-#include <fs.h>
 #include <syslinux/disk.h>
-#include <syslinux/pmapi.h>
 #include "utility.h"
 
 static const char *bpbtypes[] = {
@@ -95,30 +93,42 @@ void lba2chs(disk_chs *dst, const struct disk_info *di, uint64_t lba, uint32_t m
 
 uint32_t get_file_lba(const char *filename)
 {
-    struct com32_filedata fd;
-    uint32_t lba = 0;
-    int size = 65536;
-    char *buf;
+    com32sys_t inregs;
+    uint32_t lba;
 
-    buf = lmalloc(size);
-    if (!buf)
-	return 0;
+    /* Start with clean registers */
+    memset(&inregs, 0, sizeof(com32sys_t));
 
     /* Put the filename in the bounce buffer */
-    strlcpy(buf, filename, size);
+    strlcpy(__com32.cs_bounce, filename, __com32.cs_bounce_size);
 
-    if (open_file(buf, &fd) <= 0) {
-	goto fail;		/* Filename not found */
+    /* Call comapi_open() which returns a structure pointer in SI
+     * to a structure whose first member happens to be the LBA.
+     */
+    inregs.eax.w[0] = 0x0006;
+    inregs.esi.w[0] = OFFS(__com32.cs_bounce);
+    inregs.es = SEG(__com32.cs_bounce);
+    __com32.cs_intcall(0x22, &inregs, &inregs);
+
+    if ((inregs.eflags.l & EFLAGS_CF) || inregs.esi.w[0] == 0) {
+	return 0;		/* Filename not found */
     }
 
     /* Since the first member is the LBA, we simply cast */
-    lba = *((uint32_t *) MK_PTR(0, fd.handle));
+    lba = *((uint32_t *) MK_PTR(inregs.ds, inregs.esi.w[0]));
+
+    /* Clean the registers for the next call */
+    memset(&inregs, 0, sizeof(com32sys_t));
+
+    /* Put the filename in the bounce buffer */
+    strlcpy(__com32.cs_bounce, filename, __com32.cs_bounce_size);
 
     /* Call comapi_close() to free the structure */
-    close_file(fd.handle);
+    inregs.eax.w[0] = 0x0008;
+    inregs.esi.w[0] = OFFS(__com32.cs_bounce);
+    inregs.es = SEG(__com32.cs_bounce);
+    __com32.cs_intcall(0x22, &inregs, &inregs);
 
-fail:
-    lfree(buf);
     return lba;
 }
 

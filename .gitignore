@@ -30,7 +30,6 @@
 \#*
 .\#*
 .depend
-/com32/lib/errlist.c
 /com32/lib/sys/vesa/alphatbl.c
 /diag/geodsp/mk-lba-img
 /extlinux/extlinux
@@ -48,6 +47,3 @@
 /utils/mkdiskimage
 /version.h
 /version.mk
-*GPATH
-*GRTAGS
-*GTAGS

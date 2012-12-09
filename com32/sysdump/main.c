@@ -72,6 +72,7 @@ int main(int argc, char *argv[])
 {
     struct upload_backend **bep, *be;
 
+    openconsole(&dev_null_r, &dev_stdcon_w);
     fputs(version, stdout);
 
     if (argc < 2)

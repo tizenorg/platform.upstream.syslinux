@@ -38,7 +38,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
-#include <graphics.h>
 
 #include "vesa.h"
 #include "mboot.h"
@@ -62,13 +61,9 @@ void set_graphics_mode(const struct multiboot_header *mbh,
     if (!(mbh->flags & MULTIBOOT_VIDEO_MODE) || mbh->mode_type != 0)
 	return;
 
-    gi = lmalloc(sizeof *gi);
-    if (!gi)
-	return;
-
-    mi = lmalloc(sizeof *mi);
-    if (!mi)
-	goto out;
+    /* Allocate space in the bounce buffer for these structures */
+    gi = &((struct vesa_info *)__com32.cs_bounce)->gi;
+    mi = &((struct vesa_info *)__com32.cs_bounce)->mi;
 
     memset(&rm, 0, sizeof rm);
     memset(gi, 0, sizeof *gi);
@@ -80,11 +75,11 @@ void set_graphics_mode(const struct multiboot_header *mbh,
     __intcall(0x10, &rm, &rm);
 
     if (rm.eax.w[0] != 0x004F)
-	goto out;		/* Function call failed */
+	return;			/* Function call failed */
     if (gi->signature != VESA_MAGIC)
-	goto out;		/* No magic */
+	return;			/* No magic */
     if (gi->version < 0x0102)
-	goto out;		/* VESA 1.2+ required */
+	return;			/* VESA 1.2+ required */
 
     memcpy(&vesa_info.gi, gi, sizeof *gi);
 
@@ -187,7 +182,7 @@ void set_graphics_mode(const struct multiboot_header *mbh,
     }
 
     if (!bestpxf)
-	goto out;		/* No mode found */
+	return;			/* No mode found */
 
     mi = &vesa_info.mi;
     mode = bestmode;
@@ -198,7 +193,7 @@ void set_graphics_mode(const struct multiboot_header *mbh,
     rm.ebx.w[0] = mode;
     __intcall(0x10, &rm, &rm);
     if (rm.eax.w[0] != 0x004F)
-	goto out;		/* Failed to set mode */
+	return;			/* Failed to set mode */
 
     mbi->flags |= MB_INFO_VIDEO_INFO;
     mbi->vbe_mode = mode;
@@ -216,16 +211,16 @@ void set_graphics_mode(const struct multiboot_header *mbh,
 	mbi->vbe_interface_len = rm.ecx.w[0];
     }
 
+    /* Tell syslinux we changed video mode */
+    rm.eax.w[0] = 0x0017;	/* Report video mode change */
     /* In theory this should be:
-     *
-     * UsingVga = (mi->mode_attr & 4) ? 0x0007 : 0x000f;
-     *
-     * However, that would assume all systems that claim to handle text
-     * output in VESA modes actually do that...
-     */
-    graphics_using_vga(0x0F, vesa_info.mi.h_res, vesa_info.mi.v_res);
 
-out:
-    lfree(mi);
-    lfree(gi);
+       rm.ebx.w[0] = (mi->mode_attr & 4) ? 0x0007 : 0x000f;
+
+       However, that would assume all systems that claim to handle text
+       output in VESA modes actually do that... */
+    rm.ebx.w[0] = 0x000f;
+    rm.ecx.w[0] = vesa_info.mi.h_res;
+    rm.edx.w[0] = vesa_info.mi.v_res;
+    __intcall(0x22, &rm, NULL);
 }

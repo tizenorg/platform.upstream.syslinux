@@ -21,10 +21,9 @@ int asprintf(char **bufp, const char *format, ...)
 
     *bufp = p = malloc(bytes);
     if (!p)
-	rv = -1;
-    else
-	rv = vsnprintf(p, bytes, format, ap);
+	return -1;
 
+    rv = vsnprintf(p, bytes, format, ap);
     va_end(ap);
 
     return rv;

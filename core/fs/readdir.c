@@ -7,7 +7,7 @@
 /* 
  * Open a directory
  */
-__export DIR *opendir(const char *path)
+DIR *opendir(const char *path)
 {
     int rv;
     struct file *file;
@@ -29,7 +29,7 @@ __export DIR *opendir(const char *path)
 /*
  * Read one directory entry at one time. 
  */
-__export struct dirent *readdir(DIR *dir)
+struct dirent *readdir(DIR *dir)
 {
     static struct dirent buf;
     struct file *dd_dir = (struct file *)dir;
@@ -47,7 +47,7 @@ __export struct dirent *readdir(DIR *dir)
 /*
  * Close a directory
  */
-__export int closedir(DIR *dir)
+int closedir(DIR *dir)
 {
     struct file *dd_dir = (struct file *)dir;
     _close_file(dd_dir);

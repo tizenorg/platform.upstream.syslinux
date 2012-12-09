@@ -47,7 +47,6 @@ void console_ansi_raw(void)
 
 #include <stdio.h>
 #include <termios.h>
-#include <unistd.h>
 
 static struct termios original_termios_settings;
 
@@ -81,24 +80,6 @@ void console_ansi_raw(void)
     tio.c_cc[VMIN] = 0;
     tio.c_cc[VTIME] = 1;	/* Don't 100% busy-wait in Linux */
     tcsetattr(0, TCSAFLUSH, &tio);
-}
-
-int raw_read(int fd, void *buf, size_t count)
-{
-	struct termios tio, rtio;
-	int rv;
-
-	tcgetattr(fd, &tio);
-
-	cfmakeraw(&rtio);
-	tcsetattr(fd, 0, &rtio);
-
-	rv = read(fd, buf, count);
-
-	/* Restore settings */
-	tcsetattr(fd, 0, &tio);
-
-	return rv;
 }
 
 #endif

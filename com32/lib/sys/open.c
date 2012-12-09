@@ -30,7 +30,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <fs.h>
 #include "file.h"
 
 /*
@@ -57,15 +56,12 @@ int open(const char *pathname, int flags, ...)
     struct file_info *fp;
 
     fd = opendev(&__file_dev, NULL, flags);
-
-    //printf("enter, file = %s, fd = %d\n", pathname, fd);
-
     if (fd < 0)
 	return -1;
 
     fp = &__file_info[fd];
 
-    handle = open_file(pathname, &fp->i.fd);
+    handle = __com32.cs_pm->open_file(pathname, &fp->i.fd);
     if (handle < 0) {
 	close(fd);
 	errno = ENOENT;

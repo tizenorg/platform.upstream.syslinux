@@ -14,7 +14,7 @@
 #define NULL ((void *) 0)
 #endif
 
-#include "cmenu.h"
+#include "menu.h"
 #include "com32io.h"
 #include <string.h>
 

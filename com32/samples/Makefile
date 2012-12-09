@@ -14,11 +14,9 @@
 ## samples for syslinux users
 ##
 
-LIBS = $(com32)/libutil/libutil_com.c32
-
 topdir = ../..
 MAKEDIR = $(topdir)/mk
-include $(MAKEDIR)/elf.mk
+include $(MAKEDIR)/com32.mk
 
 all:	hello.c32 resolv.c32 serialinfo.c32 \
 	localboot.c32 \

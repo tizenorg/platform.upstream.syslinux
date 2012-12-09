@@ -65,7 +65,7 @@ static size_t initramfs_mkdirs(const char *filename, void *buffer,
     const char *p = filename;
     char *bp = buffer;
     int len;
-    size_t bytes = 0, hdr_sz;
+    size_t bytes = 0;
     int pad;
 
     while ((p = strchr(p, '/'))) {
@@ -81,17 +81,15 @@ static size_t initramfs_mkdirs(const char *filename, void *buffer,
 	while ((p = strchr(p, '/'))) {
 	    if (p != filename && p[-1] != '/') {
 		len = p - filename;
-		hdr_sz = ((sizeof(struct cpio_header) + len + 1) + 3) & ~3;
 		bp += sprintf(bp, "070701%08x%08x%08x%08x%08x%08x%08x%08x%08x"
 			      "%08x%08x%08x%08x", next_ino++, S_IFDIR | 0755,
 			      0, 0, 1, 0, 0, 0, 1, 0, 1, len + 1, 0);
 		memcpy(bp, filename, len);
 		bp += len;
-		pad = hdr_sz - (sizeof(struct cpio_header) + len);
+		pad = (-(sizeof(struct cpio_header) + len) & 3) + 1;
 		memset(bp, 0, pad);
 		bp += pad;
 	    }
-	    p++;
 	}
     }
 
@@ -106,7 +104,7 @@ int initramfs_mknod(struct initramfs *ihead, const char *filename,
 		    int do_mkdir,
 		    uint16_t mode, size_t len, uint32_t major, uint32_t minor)
 {
-    size_t bytes, hdr_sz;
+    size_t bytes;
     int namelen = strlen(filename);
     int pad;
     char *buffer, *bp;
@@ -116,8 +114,7 @@ int initramfs_mknod(struct initramfs *ihead, const char *filename,
     else
 	bytes = 0;
 
-    hdr_sz = ((sizeof(struct cpio_header) + namelen + 1) + 3) & ~3;
-    bytes += hdr_sz;
+    bytes += ((sizeof(struct cpio_header) + namelen + 1) + 3) & ~3;
 
     bp = buffer = malloc(bytes);
     if (!buffer)
@@ -130,8 +127,8 @@ int initramfs_mknod(struct initramfs *ihead, const char *filename,
 		  "%08x%08x%08x%08x", next_ino++, mode,
 		  0, 0, 1, 0, len, 0, 1, major, minor, namelen + 1, 0);
     memcpy(bp, filename, namelen);
-    bp += namelen;
-    pad = hdr_sz - (sizeof(struct cpio_header) + namelen);
+    bp += len;
+    pad = (-(sizeof(struct cpio_header) + namelen) & 3) + 1;
     memset(bp, 0, pad);
 
     if (initramfs_add_data(ihead, buffer, bytes, bytes, 4)) {

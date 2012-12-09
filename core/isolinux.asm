@@ -68,7 +68,6 @@ trackbuf	resb trackbufsize	; Track buffer goes here
 		; Some of these are touched before the whole image
 		; is loaded.  DO NOT move this to .bss16/.uibss.
 		section .earlybss
-		global BIOSName
 		alignb 4
 FirstSecSum	resd 1			; Checksum of bytes 64-2048
 ImageDwords	resd 1			; isolinux.bin size, dwords
@@ -168,7 +167,6 @@ _spec_len	equ _spec_end - _spec_start
 ;; CD-ROM sector (2K) of the file, so the number one priority is actually
 ;; loading the rest.
 ;;
-		global StackBuf
 StackBuf	equ STACK_TOP-44	; 44 bytes needed for
 					; the bootsector chainloading
 					; code!
@@ -288,7 +286,7 @@ initial_csum:	xor edi,edi
 		call writemsg
 		mov al,dl
 		call writehex2
-		call crlf_early
+		call crlf
 %endif
 		;
 		; Initialize spec packet buffers
@@ -328,7 +326,7 @@ initial_csum:	xor edi,edi
 		call writemsg
 		mov al,byte [sp_drive]
 		call writehex2
-		call crlf_early
+		call crlf
 %endif
 
 found_drive:
@@ -395,7 +393,7 @@ found_file:
 		mov si,offset_msg
 		call writemsg
 		call writehex8
-		call crlf_early
+		call crlf
 %endif
 
 		; Load the rest of the file.  However, just in case there
@@ -523,7 +521,7 @@ award_string	db	0b8h,1,2,0bbh,0,7ch,0b9h,6,0,0bah,80h,1,09ch,09ah    ;;
 									     ;;
 						;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 award_hack:	mov	si,spec_err_msg		; Moved to this place from
-		call	writemsg		; spec_query_failed
+		call	writemsg		; spec_query_faild
 						;
 %ifdef DEBUG_MESSAGES				;
 						;
@@ -625,7 +623,7 @@ spec_query_failed:
 		call writemsg
 		mov al,dl
 		call writehex2
-		call crlf_early
+		call crlf
 
 		cmp byte [sp_drive],dl
 		jne .maybe_broken
@@ -669,7 +667,7 @@ spec_query_failed:
 		call writemsg
 		mov al,dl
 		call writehex2
-		call crlf_early
+		call crlf
 		mov si,trysbm_msg
 		call writemsg
 		jmp .found_drive		; Pray that this works...
@@ -689,26 +687,6 @@ writemsg:	push ax
 		call writestr_early
 		pop si
 		call writestr_early
-		pop ax
-		ret
-
-writestr_early:
-		pushfd
-		pushad
-.top:		lodsb
-		and al,al
-		jz .end
-		call writechr
-		jmp short .top
-.end:		popad
-		popfd
-		ret
-
-crlf_early:	push ax
-		mov al,CR
-		call writechr
-		mov al,LF
-		call writechr
 		pop ax
 		ret
 
@@ -1026,7 +1004,7 @@ xint13:		mov byte [RetryCount],retry_count
 		call writestr_early
 		mov al,dl
 		call writehex2
-		call crlf_early
+		call crlf
 		; Fall through to kaboom
 
 ;
@@ -1037,9 +1015,9 @@ xint13:		mov byte [RetryCount],retry_count
 disk_error:
 kaboom:
 		RESET_STACK_AND_SEGS AX
-		mov si,bailmsg
-		pm_call pm_writestr
-		pm_call pm_getchar
+		mov si,err_bootfailed
+		call writestr
+		call getchar
 		cli
 		mov word [BIOS_magic],0	; Cold reboot
 		jmp 0F000h:0FFF0h	; Reset vector address
@@ -1048,13 +1026,14 @@ kaboom:
 ;  Common modules needed in the first sector
 ; -----------------------------------------------------------------------------
 
+%include "writestr.inc"		; String output
+writestr_early	equ writestr
 %include "writehex.inc"		; Hexadecimal output
 
 ; -----------------------------------------------------------------------------
 ; Data that needs to be in the first sector
 ; -----------------------------------------------------------------------------
 
-		global syslinux_banner, copyright_str
 syslinux_banner	db CR, LF, MY_NAME, ' ', VERSION_STR, ' ', DATE_STR, ' ', 0
 copyright_str   db ' Copyright (C) 1994-'
 		asciidec YEAR
@@ -1126,10 +1105,18 @@ all_read:
 ;
 %include "init.inc"
 
+		; Patch the writechr routine to point to the full code
+		mov di,writechr
+		mov al,0e9h
+		stosb
+		mov ax,writechr_full-2
+		sub ax,di
+		stosw
+
 ; Tell the user we got this far...
 %ifndef DEBUG_MESSAGES			; Gets messy with debugging on
 		mov si,copyright_str
-		pm_call pm_writestr
+		call writestr_early
 %endif
 
 ;
@@ -1169,11 +1156,6 @@ init_fs:
                 mov si,[bsHeads]
 		mov di,[bsSecPerTrack]
 		pm_call fs_init
-		pm_call load_env32
-enter_command:
-auto_boot:
-		jmp kaboom		; load_env32() should never return. If
-		                        ; it does, then kaboom!
 		popad
 
 		section .rodata
@@ -1185,69 +1167,25 @@ ROOT_FS_OPS:
 
 		section .text16
 
-%ifdef DEBUG_TRACERS
 ;
-; debug hack to print a character with minimal code impact
+; Locate the configuration file
 ;
-debug_tracer:	pushad
-		pushfd
-		mov bp,sp
-		mov bx,[bp+9*4]		; Get return address
-		mov al,[cs:bx]		; Get data byte
-		inc word [bp+9*4]	; Return to after data byte
-		call writechr
-		popfd
-		popad
-		ret
-%endif	; DEBUG_TRACERS
-
-		section .bss16
-		alignb 4
-ThisKbdTo	resd 1			; Temporary holder for KbdTimeout
-ThisTotalTo	resd 1			; Temporary holder for TotalTimeout
-KernelExtPtr	resw 1			; During search, final null pointer
-FuncFlag	resb 1			; Escape sequences received from keyboard
-KernelType	resb 1			; Kernel type, from vkernel, if known
-		global KernelName
-KernelName	resb FILENAME_MAX	; Mangled name for kernel
-		section .data16
-		global IPAppends, numIPAppends
-%if IS_PXELINUX
-		extern IPOption
-		alignz 2
-IPAppends	dw IPOption
-numIPAppends	equ ($-IPAppends)/2
-%else
-IPAppends	equ 0
-numIPAppends	equ 0
-%endif
-
-		section .text16
-;
-; COMBOOT-loading code
-;
-%include "comboot.inc"
-%include "com32.inc"
+		pm_call pm_load_config
+		jz no_config_file
 
 ;
-; Boot sector loading code
+; Now we have the config file open.  Parse the config file and
+; run the user interface.
 ;
-
-;
-; Abort loading code
-;
-
-;
-; Hardware cleanup common code
-;
-
-%include "localboot.inc"
+%include "ui.inc"
 
 ; -----------------------------------------------------------------------------
 ;  Common modules
 ; -----------------------------------------------------------------------------
 
 %include "common.inc"		; Universal modules
+%include "rawcon.inc"		; Console I/O w/o using the console functions
+%include "localboot.inc"	; Disk-based local boot
 
 ; -----------------------------------------------------------------------------
 ;  Begin data section
@@ -1255,3 +1193,19 @@ numIPAppends	equ 0
 
 		section .data16
 err_disk_image	db 'Cannot load disk image (invalid file)?', CR, LF, 0
+
+;
+; Config file keyword table
+;
+%include "keywords.inc"
+
+;
+; Extensions to search for (in *forward* order).
+;
+		alignz 4
+exten_table:	db '.cbt'		; COMBOOT (specific)
+		db '.bin'		; CD boot sector
+		db '.com'		; COMBOOT (same as DOS)
+		db '.c32'		; COM32
+exten_table_end:
+		dd 0, 0			; Need 8 null bytes here

@@ -26,17 +26,15 @@
  * ----------------------------------------------------------------------- */
 
 #include <syslinux/boot.h>
-#include <syslinux/config.h>
-#include <syslinux/pxe_api.h>
 #include <stddef.h>
-#include <bios.h>
 #include <com32.h>
-#include <core.h>
 
 void syslinux_final_cleanup(uint16_t flags)
 {
-    if (syslinux_filesystem() == SYSLINUX_FS_PXELINUX)
-	unload_pxe(flags);
+    static com32sys_t ireg;
 
-    cleanup_hardware();
+    ireg.eax.w[0] = 0x000c;
+    ireg.edx.w[0] = flags;
+
+    __intcall(0x22, &ireg, NULL);
 }

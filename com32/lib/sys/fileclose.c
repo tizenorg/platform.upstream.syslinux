@@ -34,13 +34,12 @@
 #include <errno.h>
 #include <com32.h>
 #include <string.h>
-#include <fs.h>
 #include "file.h"
 
 int __file_close(struct file_info *fp)
 {
     if (fp->i.fd.handle)
-	close_file(fp->i.fd.handle);
+	__com32.cs_pm->close_file(fp->i.fd.handle);
 
     return 0;
 }

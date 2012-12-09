@@ -87,20 +87,15 @@ void detect_memory_e820(struct e820entry *desc, int size_map, int *size_found)
 {
     int count = 0;
     static struct e820_ext_entry buf;	/* static so it is zeroed */
-    void *bounce;
 
     com32sys_t ireg, oreg;
     memset(&ireg, 0, sizeof ireg);
 
-    bounce = lmalloc(sizeof buf);
-    if (!bounce)
-	goto out;
-
     ireg.eax.w[0] = 0xe820;
     ireg.edx.l = SMAP;
     ireg.ecx.l = sizeof(struct e820_ext_entry);
-    ireg.edi.w[0] = OFFS(bounce);
-    ireg.es = SEG(bounce);
+    ireg.edi.w[0] = OFFS(__com32.cs_bounce);
+    ireg.es = SEG(__com32.cs_bounce);
 
     /*
      * Set this here so that if the BIOS doesn't change this field
@@ -110,7 +105,7 @@ void detect_memory_e820(struct e820entry *desc, int size_map, int *size_found)
     buf.ext_flags = 1;
 
     do {
-	memcpy(bounce, &buf, sizeof buf);
+	memcpy(__com32.cs_bounce, &buf, sizeof buf);
 
 	/* Important: %edx and %esi are clobbered by some BIOSes,
 	   so they must be either used for the error output
@@ -131,7 +126,7 @@ void detect_memory_e820(struct e820entry *desc, int size_map, int *size_found)
 	if (oreg.eflags.l & EFLAGS_CF || oreg.ecx.l < 20)
 	    break;
 
-	memcpy(&buf, bounce, sizeof buf);
+	memcpy(&buf, __com32.cs_bounce, sizeof buf);
 
 	/*
 	 * ACPI 3.0 added the extended flags support.  If bit 0
@@ -148,8 +143,6 @@ void detect_memory_e820(struct e820entry *desc, int size_map, int *size_found)
 	ireg.ebx.l = oreg.ebx.l;
     } while (ireg.ebx.l && count < size_map);
 
-out:
-    lfree(bounce);
     *size_found = count;
 }
 

@@ -34,22 +34,19 @@
 #include <klibc/compiler.h>
 #include <syslinux/config.h>
 #include <string.h>
-#include <bios.h>
-#include <core.h>
+#include <com32.h>
 
 struct syslinux_serial_console_info __syslinux_serial_console_info;
 
 void __constructor __syslinux_get_serial_console_info(void)
 {
-    uint16_t flowctl;
+    static com32sys_t reg;
 
-    __syslinux_serial_console_info.iobase = SerialPort;
-    __syslinux_serial_console_info.divisor = BaudDivisor;
+    memset(&reg, 0, sizeof reg);
+    reg.eax.w[0] = 0x000b;
+    __intcall(0x22, &reg, &reg);
 
-    flowctl = FlowOutput | FlowInput | (FlowIgnore << 4);
-
-    if (!DisplayCon)
-	flowctl |= (0x80 << 8);
-
-    __syslinux_serial_console_info.flowctl = flowctl;
+    __syslinux_serial_console_info.iobase = reg.edx.w[0];
+    __syslinux_serial_console_info.divisor = reg.ecx.w[0];
+    __syslinux_serial_console_info.flowctl = reg.ebx.w[0];
 }

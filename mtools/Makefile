@@ -14,7 +14,6 @@ SRCS     = syslinux.c \
 	   ../libinstaller/setadv.c \
 	   ../libinstaller/bootsect_bin.c \
 	   ../libinstaller/ldlinux_bin.c \
-	   ../libinstaller/ldlinuxc32_bin.c \
 	   $(wildcard ../libfat/*.c)
 OBJS	 = $(patsubst %.c,%.o,$(notdir $(SRCS)))
 

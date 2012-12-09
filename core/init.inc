@@ -23,23 +23,81 @@ common_init:
 		; Initialize PM invocation framework
 		call pm_init
 
-%if IS_PXELINUX
-		; Save derivative-specific data
-		pm_call pm_save_data
-%endif
-
 		; Decompress PM code to its target location
 		pm_call pm_decompress
 		cmp eax,__pm_code_len
 		jne kaboom
 
-		extern init
-		pm_call init
+;
+; Initialize timer
+;
+		call timer_init
+
+;
+; Initialize configuration information
+;
+		call reset_config
 
 ;
 ; Set up the COMBOOT APIs
 ;
 		call comboot_setup_api
+
+;
+; Now set up screen parameters
+;
+		call adjust_screen
+
+;
+; CPU-dependent initialization and related checks.
+;
+check_escapes:
+		mov ah,02h			; Check keyboard flags
+		int 16h
+		mov [KbdFlags],al		; Save for boot prompt check
+		test al,04h			; Ctrl->skip 386 check
+		jnz skip_checks
+
+;
+; Now check that there is sufficient low (DOS) memory
+;
+; NOTE: Linux doesn't use all of real_mode_seg, but we use the same
+; segment for COMBOOT images, which can use all 64K
+;
+		int 12h
+		mov edx,__lowmem_heap + min_lowmem_heap + 1023
+		shr edx,10
+		cmp ax,dx
+		jae enough_ram
+		mov si,err_noram
+		mov cl,10
+		push dx
+		div cl
+		add [si+err_noram.need-err_noram+2],ah
+		cbw
+		div cl
+		add [si+err_noram.need-err_noram],ax
+		pop ax
+		div cl
+		add [si+err_noram.size-err_noram+2],ah
+		cbw
+		div cl
+		add [si+err_noram.size-err_noram],ax
+		call writestr_early
+		jmp kaboom
+enough_ram:
+skip_checks:
+
+		section .data16
+err_noram	db 'It appears your computer has only '
+.size		db '000'
+		db 'K of low ("DOS") RAM.', CR, LF
+		db 'This version of Syslinux needs '
+.need		db '000'
+		db 'K to boot.  If you get this', CR, LF
+		db 'message in error, hold down the Ctrl key while'
+		db 'booting, and I', CR, LF
+		db 'will take your word for it.', CR, LF, 0
 
 		section .text16
 ;
@@ -68,7 +126,7 @@ pm_decompress:
 		mov edi,__bss16_start
 		mov ecx,__bss16_dwords
 		rep stosd
-		mov edi,__high_clear_start	; .uibss, .lowmem
+		mov edi,__high_clear_start	; .uibss, .auxseg, .lowmem
 		mov ecx,__high_clear_dwords
 		rep stosd
 

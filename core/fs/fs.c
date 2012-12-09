@@ -1,21 +1,15 @@
-#include <sys/file.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
-#include <unistd.h>
 #include <dprintf.h>
-#include "core.h"
-#include "dev.h"
 #include "fs.h"
 #include "cache.h"
 
-__export char *PATH;
-
 /* The currently mounted filesystem */
-__export struct fs_info *this_fs = NULL;		/* Root filesystem */
+struct fs_info *this_fs = NULL;		/* Root filesystem */
 
 /* Actual file structures (we don't have malloc yet...) */
-__export struct file files[MAX_OPEN];
+struct file files[MAX_OPEN];
 
 /* Symlink hard limits */
 #define MAX_SYMLINK_CNT	20
@@ -74,7 +68,7 @@ static inline void free_file(struct file *file)
     memset(file, 0, sizeof *file);
 }
 
-__export void _close_file(struct file *file)
+void _close_file(struct file *file)
 {
     if (file->fs)
 	file->fs->fs_ops->close_file(file);
@@ -82,30 +76,19 @@ __export void _close_file(struct file *file)
 }
 
 /*
- * Find and open the configuration file
+ * Convert between a 16-bit file handle and a file structure
  */
-__export int open_config(void)
+
+void pm_load_config(com32sys_t *regs)
 {
-    int fd, handle;
-    struct file_info *fp;
+    int err;
 
-    fd = opendev(&__file_dev, NULL, O_RDONLY);
-    if (fd < 0)
-	return -1;
+    err = this_fs->fs_ops->load_config();
 
-    fp = &__file_info[fd];
+    if (err)
+	printf("ERROR: No configuration file found\n");
 
-    handle = this_fs->fs_ops->open_config(&fp->i.fd);
-    if (handle < 0) {
-	close(fd);
-	errno = ENOENT;
-	return -1;
-    }
-
-    fp->i.offset = 0;
-    fp->i.nbytes = 0;
-
-    return fd;
+    set_flags(regs, err ? EFLAGS_ZF : 0);
 }
 
 void pm_mangle_name(com32sys_t *regs)
@@ -116,7 +99,7 @@ void pm_mangle_name(com32sys_t *regs)
     mangle_name(dst, src);
 }
 
-__export void mangle_name(char *dst, const char *src)
+void mangle_name(char *dst, const char *src)
 {
     this_fs->fs_ops->mangle_name(dst, src);
 }
@@ -219,10 +202,11 @@ void pm_searchdir(com32sys_t *regs)
 
 int searchdir(const char *name)
 {
-    static char root_name[] = "/";
+    struct inode *inode = NULL;
+    struct inode *parent = NULL;
     struct file *file;
-    char *path, *inode_name, *next_inode_name;
-    struct inode *tmp, *inode = NULL;
+    char *pathbuf = NULL;
+    char *part, *p, echar;
     int symlink_count = MAX_SYMLINK_CNT;
 
     dprintf("searchdir: %s  root: %p  cwd: %p\n",
@@ -244,165 +228,113 @@ int searchdir(const char *name)
 
     /* else, try the generic-path-lookup method */
 
-    /* Copy the path */
-    path = strdup(name);
-    if (!path) {
-	dprintf("searchdir: Couldn't copy path\n");
-	goto err_path;
-    }
-
-    /* Work with the current directory, by default */
-    inode = get_inode(this_fs->cwd);
-    if (!inode) {
-	dprintf("searchdir: Couldn't use current directory\n");
-	goto err_curdir;
-    }
-
-    for (inode_name = path; inode_name; inode_name = next_inode_name) {
-	/* Root directory? */
-	if (inode_name[0] == '/') {
-	    next_inode_name = inode_name + 1;
-	    inode_name = root_name;
-	} else {
-	    /* Find the next inode name */
-	    next_inode_name = strchr(inode_name + 1, '/');
-	    if (next_inode_name) {
-		/* Terminate the current inode name and point to next */
-		*next_inode_name++ = '\0';
-	    }
-	}
-	if (next_inode_name) {
-	    /* Advance beyond redundant slashes */
-	    while (*next_inode_name == '/')
-		next_inode_name++;
-
-	    /* Check if we're at the end */
-	    if (*next_inode_name == '\0')
-		next_inode_name = NULL;
-	}
-	dprintf("searchdir: inode_name: %s\n", inode_name);
-	if (next_inode_name)
-	    dprintf("searchdir: Remaining: %s\n", next_inode_name);
-
-	/* Root directory? */
-	if (inode_name[0] == '/') {
-	    /* Release any chain that's already been established */
-	    put_inode(inode);
-	    inode = get_inode(this_fs->root);
-	    continue;
-	}
-
-	/* Current directory? */
-	if (!strncmp(inode_name, ".", sizeof "."))
-	    continue;
-
-	/* Parent directory? */
-	if (!strncmp(inode_name, "..", sizeof "..")) {
-	    /* If there is no parent, just ignore it */
-	    if (!inode->parent)
-		continue;
-
-	    /* Add a reference to the parent so we can release the child */
-	    tmp = get_inode(inode->parent);
-
-	    /* Releasing the child will drop the parent back down to 1 */
-	    put_inode(inode);
-
-	    inode = tmp;
-	    continue;
-	}
-
-	/* Anything else */
-	tmp = inode;
-	inode = this_fs->fs_ops->iget(inode_name, inode);
-	if (!inode) {
-	    /* Failure.  Release the chain */
-	    put_inode(tmp);
-	    break;
-	}
-
-	/* Sanity-check */
-	if (inode->parent && inode->parent != tmp) {
-	    dprintf("searchdir: iget returned a different parent\n");
-	    put_inode(inode);
-	    inode = NULL;
-	    put_inode(tmp);
-	    break;
-	}
-	inode->parent = tmp;
-	inode->name = strdup(inode_name);
-	dprintf("searchdir: path component: %s\n", inode->name);
-
-	/* Symlink handling */
-	if (inode->mode == DT_LNK) {
-	    char *new_path;
-	    int new_len, copied;
-
-	    /* target path + NUL */
-	    new_len = inode->size + 1;
-
-	    if (next_inode_name) {
-		/* target path + slash + remaining + NUL */
-		new_len += strlen(next_inode_name) + 1;
-	    }
-
-	    if (!this_fs->fs_ops->readlink ||
-		/* limit checks */
-		--symlink_count == 0 ||
-		new_len > MAX_SYMLINK_BUF)
-		goto err_new_len;
-
-	    new_path = malloc(new_len);
-	    if (!new_path)
-		goto err_new_path;
-
-	    copied = this_fs->fs_ops->readlink(inode, new_path);
-	    if (copied <= 0)
-		goto err_copied;
-	    new_path[copied] = '\0';
-	    dprintf("searchdir: Symlink: %s\n", new_path);
-
-	    if (next_inode_name) {
-		new_path[copied] = '/';
-		strcpy(new_path + copied + 1, next_inode_name);
-		dprintf("searchdir: New path: %s\n", new_path);
-	    }
-
-	    free(path);
-	    path = next_inode_name = new_path;
-
-            /* Add a reference to the parent so we can release the child */
-            tmp = get_inode(inode->parent);
-
-            /* Releasing the child will drop the parent back down to 1 */
-            put_inode(inode);
-
-            inode = tmp;
-	    continue;
-err_copied:
-	    free(new_path);
-err_new_path:
-err_new_len:
-	    put_inode(inode);
-	    inode = NULL;
-	    break;
-	}
-
-	/* If there's more to process, this should be a directory */
-	if (next_inode_name && inode->mode != DT_DIR) {
-	    dprintf("searchdir: Expected a directory\n");
-	    put_inode(inode);
-	    inode = NULL;
-	    break;
-	}
-    }
-err_curdir:
-    free(path);
-err_path:
-    if (!inode) {
-	dprintf("searchdir: Not found\n");
+    parent = get_inode(this_fs->cwd);
+    p = pathbuf = strdup(name);
+    if (!pathbuf)
 	goto err;
-    }
+
+    do {
+    got_link:
+	if (*p == '/') {
+	    put_inode(parent);
+	    parent = get_inode(this_fs->root);
+	}
+
+	do {
+	    inode = get_inode(parent);
+
+	    while (*p == '/')
+		p++;
+
+	    if (!*p)
+		break;
+
+	    part = p;
+	    while ((echar = *p) && echar != '/')
+		p++;
+	    *p++ = '\0';
+
+	    if (part[0] == '.' && part[1] == '.' && part[2] == '\0') {
+		if (inode->parent) {
+		    put_inode(parent);
+		    parent = get_inode(inode->parent);
+		    put_inode(inode);
+		    inode = NULL;
+		    if (!echar) {
+			/* Terminal double dots */
+			inode = parent;
+			parent = inode->parent ?
+			    get_inode(inode->parent) : NULL;
+		    }
+		}
+	    } else if (part[0] != '.' || part[1] != '\0') {
+		inode = this_fs->fs_ops->iget(part, parent);
+		if (!inode)
+		    goto err;
+		if (inode->mode == DT_LNK) {
+		    char *linkbuf, *q;
+		    int name_len = echar ? strlen(p) : 0;
+		    int total_len = inode->size + name_len + 2;
+		    int link_len;
+
+		    if (!this_fs->fs_ops->readlink ||
+			--symlink_count == 0       ||      /* limit check */
+			total_len > MAX_SYMLINK_BUF)
+			goto err;
+
+		    linkbuf = malloc(total_len);
+		    if (!linkbuf)
+			goto err;
+
+		    link_len = this_fs->fs_ops->readlink(inode, linkbuf);
+		    if (link_len <= 0) {
+			free(linkbuf);
+			goto err;
+		    }
+
+		    q = linkbuf + link_len;
+
+		    if (echar) {
+			if (link_len > 0 && q[-1] != '/')
+			    *q++ = '/';
+
+			memcpy(q, p, name_len+1);
+		    } else {
+			*q = '\0';
+		    }
+
+		    free(pathbuf);
+		    p = pathbuf = linkbuf;
+		    put_inode(inode);
+		    inode = NULL;
+		    goto got_link;
+		}
+
+		inode->name = strdup(part);
+		dprintf("path component: %s\n", inode->name);
+
+		inode->parent = parent;
+		parent = NULL;
+
+		if (!echar)
+		    break;
+
+		if (inode->mode != DT_DIR)
+		    goto err;
+
+		parent = inode;
+		inode = NULL;
+	    }
+	} while (echar);
+    } while (0);
+
+    free(pathbuf);
+    pathbuf = NULL;
+    put_inode(parent);
+    parent = NULL;
+
+    if (!inode)
+	goto err;
 
     file->inode  = inode;
     file->offset = 0;
@@ -410,12 +342,16 @@ err_path:
     return file_to_handle(file);
 
 err:
+    put_inode(inode);
+    put_inode(parent);
+    if (pathbuf)
+	free(pathbuf);
     _close_file(file);
 err_no_close:
     return -1;
 }
 
-__export int open_file(const char *name, struct com32_filedata *filedata)
+int open_file(const char *name, struct com32_filedata *filedata)
 {
     int rv;
     struct file *file;
@@ -465,7 +401,7 @@ void pm_open_file(com32sys_t *regs)
     }
 }
 
-__export void close_file(uint16_t handle)
+void close_file(uint16_t handle)
 {
     struct file *file;
 
@@ -547,11 +483,6 @@ void fs_init(com32sys_t *regs)
 	fs.root = fs.fs_ops->iget_root(&fs);
 	fs.cwd = get_inode(fs.root);
 	dprintf("init: root inode %p, cwd inode %p\n", fs.root, fs.cwd);
-    }
-
-    if (fs.fs_ops->chdir_start) {
-	    if (fs.fs_ops->chdir_start() < 0)
-		    printf("Failed to chdir to start directory\n");
     }
 
     SectorShift = fs.sector_shift;

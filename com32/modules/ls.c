@@ -155,6 +155,8 @@ int main(int argc, char *argv[])
 {
     int rv;
 
+    openconsole(&dev_rawcon_r, &dev_stdcon_w);
+    
     if (getscreensize(1, &rows, &cols)) {
 	/* Unknown screen size? */
 	rows = 24;

@@ -6,7 +6,6 @@
 #include <cache.h>
 #include <disk.h>
 #include <fs.h>
-#include <stdlib.h>
 #include "iso9660_fs.h"
 
 /* Convert to lower case string */
@@ -227,7 +226,7 @@ static int iso_readdir(struct file *file, struct dirent *dirent)
 }
 
 /* Load the config file, return 1 if failed, or 0 */
-static int iso_open_config(struct com32_filedata *filedata)
+static int iso_load_config(void)
 {
     static const char *search_directories[] = {
 	"/boot/isolinux", 
@@ -243,7 +242,7 @@ static int iso_open_config(struct com32_filedata *filedata)
 	NULL
     };
 
-    return search_dirs(filedata, search_directories, filenames, ConfigName);
+    return search_config(search_directories, filenames);
 }
 
 static int iso_fs_init(struct fs_info *fs)
@@ -294,7 +293,7 @@ const struct fs_ops iso_fs_ops = {
     .getfssec      = generic_getfssec,
     .close_file    = generic_close_file,
     .mangle_name   = generic_mangle_name,
-    .open_config   = iso_open_config,
+    .load_config   = iso_load_config,
     .iget_root     = iso_iget_root,
     .iget          = iso_iget,
     .readdir       = iso_readdir,

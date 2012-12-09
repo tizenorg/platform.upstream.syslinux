@@ -5,10 +5,6 @@
 #ifndef _DPRINTF_H
 #define _DPRINTF_H
 
-#if !defined(DEBUG_PORT) && !defined(DEBUG_STDIO)
-# undef DEBUG
-#endif
-
 #ifdef DEBUG
 
 # include <stdio.h>

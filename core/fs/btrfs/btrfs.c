@@ -673,6 +673,5 @@ const struct fs_ops btrfs_fs_ops = {
     .mangle_name   = generic_mangle_name,
     .next_extent   = btrfs_next_extent,
     .readdir       = btrfs_readdir,
-    .chdir_start   = generic_chdir_start,
-    .open_config   = generic_open_config
+    .load_config   = generic_load_config
 };

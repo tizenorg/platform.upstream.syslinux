@@ -16,7 +16,7 @@
 
 topdir = ../..
 MAKEDIR = $(topdir)/mk
-include $(MAKEDIR)/elf.mk
+include $(MAKEDIR)/com32.mk
 
 LNXLIBS	   = ../libutil/libutil_lnx.a
 
@@ -24,14 +24,14 @@ MODULES	  = menu.c32 vesamenu.c32
 TESTFILES =
 
 COMMONOBJS = menumain.o readconfig.o passwd.o drain.o printmsg.o colors.o \
-	background.o refstr.o
+	background.o refstr.o execute.o
 
 all: $(MODULES) $(TESTFILES)
 
-menu.c32 : menu.o $(COMMONOBJS) $(C_LIBS)
+menu.elf : menu.o $(COMMONOBJS) $(C_LIBS)
 	$(LD) $(LDFLAGS) -o $@ $^
 
-vesamenu.c32 : vesamenu.o $(COMMONOBJS) $(C_LIBS)
+vesamenu.elf : vesamenu.o $(COMMONOBJS) $(C_LIBS)
 	$(LD) $(LDFLAGS) -o $@ $^
 
 tidy dist:

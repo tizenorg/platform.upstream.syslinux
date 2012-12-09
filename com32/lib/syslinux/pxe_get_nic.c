@@ -42,19 +42,25 @@
    or -1 on invocation failure */
 int pxe_get_nic_type(t_PXENV_UNDI_GET_NIC_TYPE *gnt)
 {
+    com32sys_t regs;
     t_PXENV_UNDI_GET_NIC_TYPE *lgnt;
-    int err;
 
     lgnt = lzalloc(sizeof *lgnt);
     if (!lgnt)
 	return -1;
 
-    err = pxe_call(PXENV_UNDI_GET_NIC_TYPE, lgnt);
+    memset(&regs, 0, sizeof regs);
+    regs.eax.w[0] = 0x0009;
+    regs.ebx.w[0] = PXENV_UNDI_GET_NIC_TYPE;
+    regs.es = SEG(lgnt);
+    /* regs.edi.w[0] = OFFS(lgnt); */
+
+    __intcall(0x22, &regs, &regs);
 
     memcpy(gnt, lgnt, sizeof(t_PXENV_UNDI_GET_NIC_TYPE));
     lfree(lgnt);
 
-    if (err)
+    if (regs.eflags.l & EFLAGS_CF)
 	return -1;
 
     return gnt->Status;
