@@ -211,7 +211,6 @@ extern bool have_uuid;
 extern uint8_t uuid_type;
 extern uint8_t uuid[];
 
-extern uint16_t BIOS_fbm;
 extern const uint8_t TimeoutTable[];
 
 /*
@@ -232,14 +231,12 @@ static inline uint32_t gateway(uint32_t ip)
 
 /* pxe.c */
 bool ip_ok(uint32_t);
-int pxe_call(int, void *);
 
 /* dhcp_options.c */
-void parse_dhcp(int);
+void parse_dhcp(const void *, size_t);
 
 /* dnsresolv.c */
 int dns_mangle(char **, const char *);
-uint32_t dns_resolv(const char *);
 
 /* idle.c */
 void pxe_idle_init(void);

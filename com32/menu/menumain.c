@@ -28,7 +28,9 @@
 #include <setjmp.h>
 #include <limits.h>
 #include <com32.h>
+#include <core.h>
 #include <syslinux/adv.h>
+#include <syslinux/boot.h>
 
 #include "menu.h"
 
@@ -806,7 +808,7 @@ static const char *run_menu(void)
 	    while (entry < cm->nentries && is_disabled(cm->menu_entries[entry]))
 		entry++;
 	}
-	if (entry >= cm->nentries) {
+	if (entry >= cm->nentries - 1) {
 	    entry = cm->nentries - 1;
 	    while (entry > 0 && is_disabled(cm->menu_entries[entry]))
 		entry--;
@@ -1157,9 +1159,13 @@ int main(int argc, char *argv[])
 	printf("\033[?25h\033[%d;1H\033[0m", END_ROW);
 
 	if (cmdline) {
-	    execute(cmdline, KT_NONE);
-	    if (cm->onerror)
-		execute(cm->onerror, KT_NONE);
+	    uint32_t type = parse_image_type(cmdline);
+
+	    execute(cmdline, type);
+	    if (cm->onerror) {
+		type = parse_image_type(cm->onerror);
+		execute(cm->onerror, type);
+	    }
 	} else {
 	    return 0;		/* Exit */
 	}

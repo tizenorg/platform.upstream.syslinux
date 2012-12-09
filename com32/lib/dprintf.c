@@ -5,11 +5,10 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-#undef DEBUG
-#define DEBUG 1
-#include <dprintf.h>
+#ifdef DEBUG_PORT
 
-#ifndef dprintf
+void vdprintf(const char *, va_list);
+
 void dprintf(const char *format, ...)
 {
     va_list ap;
@@ -18,4 +17,5 @@ void dprintf(const char *format, ...)
     vdprintf(format, ap);
     va_end(ap);
 }
-#endif
+
+#endif /* DEBUG_PORT */

@@ -11,7 +11,7 @@
 ## -----------------------------------------------------------------------
 
 ##
-## Linux vfat, ext2/ext3/ext4 and btrfs installer
+## Linux vfat, ntfs, ext2/ext3/ext4 and btrfs installer
 ##
 
 topdir = ..
@@ -25,12 +25,14 @@ CFLAGS	 = $(GCCWARN) -Wno-sign-compare -D_FILE_OFFSET_BITS=64 \
 LDFLAGS	 = 
 
 SRCS     = main.c \
+	   mountinfo.c \
 	   ../libinstaller/syslxmod.c \
 	   ../libinstaller/syslxopt.c \
 	   ../libinstaller/syslxcom.c \
 	   ../libinstaller/setadv.c \
 	   ../libinstaller/advio.c \
 	   ../libinstaller/bootsect_bin.c \
+	   ../libinstaller/ldlinuxc32_bin.c \
 	   ../libinstaller/ldlinux_bin.c
 OBJS	 = $(patsubst %.c,%.o,$(notdir $(SRCS)))
 

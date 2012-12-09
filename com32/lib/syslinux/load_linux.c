@@ -38,12 +38,15 @@
 #include <inttypes.h>
 #include <string.h>
 #include <minmax.h>
+#include <errno.h>
 #include <suffix_number.h>
+#include <graphics.h>
+#include <dprintf.h>
+
 #include <syslinux/align.h>
 #include <syslinux/linux.h>
 #include <syslinux/bootrm.h>
 #include <syslinux/movebits.h>
-#include <dprintf.h>
 
 struct linux_header {
     uint8_t boot_sector_1[0x0020];
@@ -180,13 +183,16 @@ static int map_initramfs(struct syslinux_movelist **fraglist,
 }
 
 int syslinux_boot_linux(void *kernel_buf, size_t kernel_size,
-			struct initramfs *initramfs, char *cmdline)
+			struct initramfs *initramfs,
+			struct setup_data *setup_data,
+			char *cmdline)
 {
     struct linux_header hdr, *whdr;
     size_t real_mode_size, prot_mode_size;
     addr_t real_mode_base, prot_mode_base;
     addr_t irf_size;
     size_t cmdline_size, cmdline_offset;
+    struct setup_data *sdp;
     struct syslinux_rm_regs regs;
     struct syslinux_movelist *fraglist = NULL;
     struct syslinux_memmap *mmap = NULL;
@@ -449,6 +455,49 @@ int syslinux_boot_linux(void *kernel_buf, size_t kernel_size,
 	}
     }
 
+    if (setup_data) {
+	uint64_t *prev_ptr = &whdr->setup_data;
+
+	for (sdp = setup_data->next; sdp != setup_data; sdp = sdp->next) {
+	    struct syslinux_memmap *ml;
+	    const addr_t align_mask = 15; /* Header is 16 bytes */
+	    addr_t best_addr = 0;
+	    size_t size = sdp->hdr.len + sizeof(sdp->hdr);
+
+	    if (!sdp->data || !sdp->hdr.len)
+		continue;
+
+	    if (hdr.version < 0x0209) {
+		/* Setup data not supported */
+		errno = ENXIO;	/* Kind of arbitrary... */
+		goto bail;
+	    }
+
+	    for (ml = amap; ml->type != SMT_END; ml = ml->next) {
+		addr_t adj_start = (ml->start + align_mask) & ~align_mask;
+		addr_t adj_end = ml->next->start & ~align_mask;
+
+		if (ml->type == SMT_FREE && adj_end - adj_start >= size)
+		    best_addr = (adj_end - size) & ~align_mask;
+	    }
+
+	    if (!best_addr)
+		goto bail;
+
+	    *prev_ptr = best_addr;
+	    prev_ptr = &sdp->hdr.next;
+
+	    if (syslinux_add_memmap(&amap, best_addr, size, SMT_ALLOC))
+		goto bail;
+	    if (syslinux_add_movelist(&fraglist, best_addr,
+				      (addr_t)&sdp->hdr, sizeof sdp->hdr))
+		goto bail;
+	    if (syslinux_add_movelist(&fraglist, best_addr + sizeof sdp->hdr,
+				      (addr_t)sdp->data, sdp->hdr.len))
+		goto bail;
+	}
+    }
+
     /* Set up the registers on entry */
     memset(&regs, 0, sizeof regs);
     regs.es = regs.ds = regs.ss = regs.fs = regs.gs = real_mode_base >> 4;
@@ -465,6 +514,17 @@ int syslinux_boot_linux(void *kernel_buf, size_t kernel_size,
 
     dprintf("Initial movelist:\n");
     syslinux_dump_movelist(fraglist);
+
+    if (video_mode != 0x0f04) {
+	/*
+	 * video_mode is not "current", so if we are in graphics mode we
+	 * need to revert to text mode...
+	 */
+	dprintf("*** Calling syslinux_force_text_mode()...\n");
+	syslinux_force_text_mode();
+    } else {
+	dprintf("*** vga=current, not calling syslinux_force_text_mode()...\n");
+    }
 
     syslinux_shuffle_boot_rm(fraglist, mmap, 0, &regs);
 

@@ -20,6 +20,8 @@ OUTPUT_ARCH(i386)
 EXTERN(_start)
 ENTRY(_start)
 
+STACK32_LEN = 65536;
+
 SECTIONS
 {
 	/* Prefix structure for the compression program */
@@ -210,21 +212,6 @@ SECTIONS
 	xfer_buf_seg = core_xfer_buf >> 4;
 
 	/*
-	 * The auxilliary data segment is used by the 16-bit code
-	 * for items that don't need to live in the bottom 64K.
-	 */
-
-	. = ALIGN(16);
-	.auxseg (NOLOAD) : {
-		__auxseg_start = .;
-		*(.auxseg)
-		__auxseg_end = .;
-	}
-	__auxseg_len = ABSOLUTE(__auxseg_end) - ABSOLUTE(__auxseg_start);
-	__auxseg_dwords = (__auxseg_len + 3) >> 2;
-	aux_seg = __auxseg_start >> 4;
-
-	/*
 	 * Used to allocate lowmem buffers from 32-bit code
 	 */
 	.lowmem (NOLOAD) : {
@@ -280,8 +267,9 @@ SECTIONS
 	__ctors_lma = __ctors_vma + __text_lma - __text_vma;
 	.ctors : AT(__ctors_lma) {
 		__ctors_start = .;
-		KEEP (*(SORT(.ctors.*)))
-		KEEP (*(.ctors))
+		KEEP (*(SORT(.preinit_array*)))
+		KEEP (*(SORT(.init_array*)))
+		KEEP (*(SORT(.ctors*)))
 		__ctors_end = .;
 	}
 
@@ -289,10 +277,43 @@ SECTIONS
 	__dtors_lma = __dtors_vma + __text_lma - __text_vma;
 	.dtors : AT(__dtors_lma) {
 		__dtors_start = .;
-		KEEP (*(SORT(.dtors.*)))
-		KEEP (*(.dtors))
+		KEEP (*(SORT(.fini_array*)))
+		KEEP (*(SORT(.dtors*)))
 		__dtors_end = .;
 	}
+
+	. = ALIGN(4);
+
+	__dynsym_vma = .;
+	__dynsym_lma = __dynsym_vma + __text_lma - __text_vma;
+	.dynsym : AT(__dynsym_lma) {
+		__dynsym_start = .;
+		*(.dynsym)
+		__dynsym_end = .;
+	}
+	__dynsym_len = __dynsym_end - __dynsym_start;
+
+	. = ALIGN(4);
+
+	__dynstr_vma = .;
+	__dynstr_lma = __dynstr_vma + __text_lma - __text_vma;
+	.dynstr : AT(__dynstr_lma) {
+		__dynstr_start = .;
+		*(.dynstr)
+		__dynstr_end = .;
+	}
+	__dynstr_len = __dynstr_end - __dynstr_start;
+
+	. = ALIGN(4);
+
+	__gnu_hash_vma = .;
+	__gnu_hash_lma = __gnu_hash_vma + __text_lma - __text_vma;
+	.gnu.hash : AT(__gnu_hash_lma) {
+		__gnu_hash_start = .;
+		*(.gnu.hash)
+		__gnu_hash_end = .;
+	}
+
 
 	. = ALIGN(4);
 
@@ -314,6 +335,18 @@ SECTIONS
 		KEEP (*(.got))
 		__got_end = .;
 	}
+
+	. = ALIGN(4);
+
+	__dynamic_vma = .;
+	__dynamic_lma = __dynamic_vma + __text_lma - __text_vma;
+	.dynamic : AT(__dynamic_lma) {
+		__dynamic_start = .;
+		*(.dynamic)
+		__dynamic_end = .;
+	}
+
+	. = ALIGN(16);
 
 	__data_vma = .;
 	__data_lma = __data_vma + __text_lma - __text_vma;
@@ -344,6 +377,8 @@ SECTIONS
 
 	/* Very large objects which don't need to be zeroed */
 
+	. = ALIGN(128);
+
 	__hugebss_vma = .;
 	__hugebss_lma = .;		/* Dummy */
 	.hugebss (NOLOAD) : AT (__hugebss_lma) {
@@ -355,6 +390,19 @@ SECTIONS
 	__hugebss_len = ABSOLUTE(__hugebss_end) - ABSOLUTE(__hugebss_start);
 	__hugebss_dwords = (__hugebss_len + 3) >> 2;
 
+	/* Data saved away before bss initialization */
+	. = ALIGN(128);
+
+	__savedata_vma = .;
+	__savedata_lma = .;		/* Dummy */
+	.savedata (NOLOAD) : AT (__savedata_lma) {
+		__savedata_start = .;
+		*(.savedata)
+		*(.savedata.*)
+		__savedata_end = .;
+	}
+	__savedata_len = ABSOLUTE(__savedata_end) - ABSOLUTE(__savedata_start);
+	__savedata_dwords = (__savedata_len + 3) >> 2;
 
 	/* XXX: This stack should be unified with the COM32 stack */
 	__stack_vma = .;

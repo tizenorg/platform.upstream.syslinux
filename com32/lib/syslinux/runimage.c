@@ -34,37 +34,30 @@
 #include <stdlib.h>
 #include <string.h>
 #include <syslinux/boot.h>
-#include <com32.h>
+#include <syslinux/config.h>
+#include <core.h>
+
+extern unsigned int ipappend;
 
 void syslinux_run_kernel_image(const char *filename, const char *cmdline,
 			       uint32_t ipappend_flags, uint32_t type)
 {
-    static com32sys_t ireg;
-    char *bbfilename = NULL;
     char *bbcmdline  = NULL;
+    size_t len;
+    int rv;
 
-    bbfilename = lstrdup(filename);
-    if (!bbfilename)
-	goto fail;
-
-    bbcmdline = lstrdup(cmdline);
+    /* +2 for NULL and space */
+    len = strlen(filename) + strlen(cmdline) + 2;
+    bbcmdline = malloc(len);
     if (!bbcmdline)
-	goto fail;
+	return;
 
+    rv = snprintf(bbcmdline, len, "%s %s", filename, cmdline);
+    if (rv == -1 || (size_t)rv >= len)
+	return;
 
-    ireg.eax.w[0] = 0x0016;
-    ireg.ds = SEG(bbfilename);
-    /* ireg.esi.w[0] = OFFS(bbfilename); */
-    ireg.es = SEG(bbcmdline);
-    /* ireg.ebx.w[0] = OFFS(bbcmdline); */
-    ireg.ecx.l = ipappend_flags;
-    ireg.edx.l = type;
+    if (syslinux_filesystem() == SYSLINUX_FS_PXELINUX)
+	ipappend = ipappend_flags;
 
-    __intcall(0x22, &ireg, 0);
-
-fail:
-    if (bbcmdline)
-	lfree(bbcmdline);
-    if (bbfilename)
-	lfree(bbfilename);
+    execute(bbcmdline, type);
 }

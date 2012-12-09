@@ -2,7 +2,14 @@
 #define CORE_H
 
 #include <klibc/compiler.h>
+#include <stddef.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <inttypes.h>
+#include <stdio.h>
+#include <dprintf.h>
 #include <com32.h>
+#include <errno.h>
 #include <syslinux/pmapi.h>
 
 extern char core_xfer_buf[65536];
@@ -11,9 +18,26 @@ extern char trackbuf[];
 extern char CurrentDirName[];
 extern char SubvolName[];
 extern char ConfigName[];
+extern char config_cwd[];
 extern char KernelName[];
 extern char cmd_line[];
 extern char ConfigFile[];
+extern char syslinux_banner[];
+extern char copyright_str[];
+extern uint16_t BIOSName;
+extern char StackBuf[];
+extern unsigned int __bcopyxx_len;
+
+extern uint8_t KbdMap[256];
+
+extern const uint16_t IPAppends[];
+extern const char numIPAppends[];
+
+extern uint16_t SerialPort;
+extern uint16_t BaudDivisor;
+extern uint8_t FlowOutput;
+extern uint8_t FlowInput;
+extern uint8_t FlowIgnore;
 
 /* diskstart.inc isolinux.asm*/
 extern void getlinsec(void);
@@ -30,7 +54,6 @@ extern void __idle(void);
 extern void reset_idle(void);
 
 /* mem/malloc.c, mem/free.c, mem/init.c */
-extern void *malloc(size_t);
 extern void *lmalloc(size_t);
 extern void *pmapi_lmalloc(size_t);
 extern void *zalloc(size_t);
@@ -87,5 +110,22 @@ static inline void set_flags(com32sys_t *regs, uint32_t flags)
     eflags |= flags;
     regs->eflags.l = eflags;
 }
+
+extern int start_ldlinux(char **argv);
+extern int create_args_and_load(char *);
+
+extern void write_serial(char data);
+extern void writestr(char *str);
+extern void writechr(char data);
+extern void crlf(void);
+extern int pollchar(void);
+extern char getchar(char *hi);
+
+extern void cleanup_hardware(void);
+extern void sirq_cleanup(void);
+extern void adjust_screen(void);
+
+extern void execute(const char *cmdline, uint32_t type);
+extern void load_kernel(const char *cmdline);
 
 #endif /* CORE_H */

@@ -69,6 +69,7 @@
 #include <getopt.h>
 #include <sysexits.h>
 #include "syslxcom.h"
+#include "syslxfs.h"
 #include "setadv.h"
 #include "syslxopt.h" /* unified options */
 
@@ -237,6 +238,24 @@ int modify_existing_adv(const char *path)
     return 0;
 }
 
+int do_open_file(char *name)
+{
+    int fd;
+
+    if ((fd = open(name, O_RDONLY)) >= 0) {
+	uint32_t zero_attr = 0;
+	ioctl(fd, FAT_IOCTL_SET_ATTRIBUTES, &zero_attr);
+	close(fd);
+    }
+
+    unlink(name);
+    fd = open(name, O_WRONLY | O_CREAT | O_TRUNC, 0444);
+    if (fd < 0)
+	perror(opt.device);
+
+    return fd;
+}
+
 int main(int argc, char *argv[])
 {
     static unsigned char sectbuf[SECTOR_SIZE];
@@ -252,7 +271,7 @@ int main(int argc, char *argv[])
     const char *errmsg;
     int mnt_cookie;
     int patch_sectors;
-    int i;
+    int i, rv;
 
     mypid = getpid();
     umask(077);
@@ -294,14 +313,14 @@ int main(int argc, char *argv[])
 	die("can't combine an offset with a block device");
     }
 
-    fs_type = VFAT;
     xpread(dev_fd, sectbuf, SECTOR_SIZE, opt.offset);
     fsync(dev_fd);
 
     /*
-     * Check to see that what we got was indeed an MS-DOS boot sector/superblock
+     * Check to see that what we got was indeed an FAT/NTFS
+     * boot sector/superblock
      */
-    if ((errmsg = syslinux_check_bootsect(sectbuf))) {
+    if ((errmsg = syslinux_check_bootsect(sectbuf, &fs_type))) {
 	fprintf(stderr, "%s: %s\n", opt.device, errmsg);
 	exit(1);
     }
@@ -357,10 +376,17 @@ int main(int argc, char *argv[])
 	mntpath = mntname;
     }
 
-    if (do_mount(dev_fd, &mnt_cookie, mntpath, "vfat") &&
-	do_mount(dev_fd, &mnt_cookie, mntpath, "msdos")) {
-	rmdir(mntpath);
-	die("mount failed");
+    if (fs_type == VFAT) {
+        if (do_mount(dev_fd, &mnt_cookie, mntpath, "vfat") &&
+            do_mount(dev_fd, &mnt_cookie, mntpath, "msdos")) {
+            rmdir(mntpath);
+            die("failed on mounting fat volume");
+        }
+    } else if (fs_type == NTFS) {
+        if (do_mount(dev_fd, &mnt_cookie, mntpath, "ntfs-3g")) {
+            rmdir(mntpath);
+            die("failed on mounting ntfs volume");
+        }
     }
 
     ldlinux_path = alloca(strlen(mntpath) + strlen(subdir) + 1);
@@ -400,16 +426,8 @@ int main(int argc, char *argv[])
     if (modify_adv() < 0)
 	exit(1);
 
-    if ((fd = open(ldlinux_name, O_RDONLY)) >= 0) {
-	uint32_t zero_attr = 0;
-	ioctl(fd, FAT_IOCTL_SET_ATTRIBUTES, &zero_attr);
-	close(fd);
-    }
-
-    unlink(ldlinux_name);
-    fd = open(ldlinux_name, O_WRONLY | O_CREAT | O_TRUNC, 0444);
+    fd = do_open_file(ldlinux_name);
     if (fd < 0) {
-	perror(opt.device);
 	err = 1;
 	goto umount;
     }
@@ -440,6 +458,31 @@ int main(int argc, char *argv[])
 	perror("bmap");
 	exit(1);
     }
+    close(fd);
+    sync();
+
+    sprintf(ldlinux_name, "%sldlinux.c32", ldlinux_path);
+    fd = do_open_file(ldlinux_name);
+    if (fd < 0) {
+	err = 1;
+	goto umount;
+    }
+
+    rv = xpwrite(fd, syslinux_ldlinuxc32, syslinux_ldlinuxc32_len, 0);
+    if (rv != (int)syslinux_ldlinuxc32_len) {
+	fprintf(stderr, "%s: write failure on %s\n", program, ldlinux_name);
+	exit(1);
+    }
+
+    fsync(fd);
+    /*
+     * Set the attributes
+     */
+    {
+	uint32_t attr = 0x07;	/* Hidden+System+Readonly */
+	ioctl(fd, FAT_IOCTL_SET_ATTRIBUTES, &attr);
+    }
+
     close(fd);
     sync();
 
@@ -474,7 +517,7 @@ umount:
     xpread(dev_fd, sectbuf, SECTOR_SIZE, opt.offset);
 
     /* Copy the syslinux code into the boot sector */
-    syslinux_make_bootsect(sectbuf);
+    syslinux_make_bootsect(sectbuf, fs_type);
 
     /* Write new boot sector */
     xpwrite(dev_fd, sectbuf, SECTOR_SIZE, opt.offset);

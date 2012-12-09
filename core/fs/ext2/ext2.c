@@ -164,6 +164,9 @@ static struct inode *ext2_iget_by_inr(struct fs_info *fs, uint32_t inr)
     struct inode *inode;
 
     e_inode = ext2_get_inode(fs, inr);
+    if (!e_inode)
+	return NULL;
+
     if (!(inode = alloc_inode(fs, inr, sizeof(struct ext2_pvt_inode))))
 	return NULL;
     fill_inode(inode, e_inode);
@@ -326,7 +329,8 @@ const struct fs_ops ext2_fs_ops = {
     .getfssec      = generic_getfssec,
     .close_file    = generic_close_file,
     .mangle_name   = generic_mangle_name,
-    .load_config   = generic_load_config,
+    .chdir_start   = generic_chdir_start,
+    .open_config   = generic_open_config,
     .iget_root     = ext2_iget_root,
     .iget          = ext2_iget,
     .readlink      = ext2_readlink,

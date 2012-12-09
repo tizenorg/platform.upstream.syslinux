@@ -81,14 +81,16 @@ InitStack	resd 1
 PXEStack	resd 1			; Saved stack during PXE call
 
 		alignb 4
-                global DHCPMagic, RebootTime, APIVer
+                global DHCPMagic, RebootTime, APIVer, BIOSName
 RebootTime	resd 1			; Reboot timeout, if set by option
 StrucPtr	resw 2			; Pointer to PXENV+ or !PXE structure
 APIVer		resw 1			; PXE API version found
 LocalBootType	resw 1			; Local boot return code
 DHCPMagic	resb 1			; PXELINUX magic flags
+BIOSName	resw 1			; Dummy variable - always 0
 
 		section .text16
+		global StackBuf
 StackBuf	equ STACK_TOP-44	; Base of stack if we use our own
 StackHome	equ StackBuf
 
@@ -154,54 +156,6 @@ _start1:
 
 		lss esp,[BaseStack]
 		sti			; Stack set up and ready
-;
-; Move the hardwired DHCP options (if present) to a safe place...
-;
-bdhcp_copy:
-		mov cx,[bdhcp_len]
-		mov ax,trackbufsize/2
-		jcxz .none
-		cmp cx,ax
-		jbe .oksize
-		mov cx,ax
-		mov [bdhcp_len],ax
-.oksize:
-		mov eax,[bdhcp_offset]
-		add eax,_start
-		mov si,ax
-		and si,000Fh
-		shr eax,4
-		push ds
-		mov ds,ax
-		mov di,trackbuf
-		add cx,3
-		shr cx,2
-		rep movsd
-		pop ds
-.none:
-
-adhcp_copy:
-		mov cx,[adhcp_len]
-		mov ax,trackbufsize/2
-		jcxz .none
-		cmp cx,ax
-		jbe .oksize
-		mov cx,ax
-		mov [adhcp_len],ax
-.oksize:
-		mov eax,[adhcp_offset]
-		add eax,_start
-		mov si,ax
-		and si,000Fh
-		shr eax,4
-		push ds
-		mov ds,ax
-		mov di,trackbuf+trackbufsize/2
-		add cx,3
-		shr cx,2
-		rep movsd
-		pop ds
-.none:
 
 ;
 ; Initialize screen (if we're using one)
@@ -239,8 +193,7 @@ ROOT_FS_OPS:
 		call reset_idle
 
 ;
-; Now we're all set to start with our *real* business.	First load the
-; configuration file (if any) and parse it.
+; Now we're all set to start with our *real* business.
 ;
 ; In previous versions I avoided using 32-bit registers because of a
 ; rumour some BIOSes clobbered the upper half of 32-bit registers at
@@ -264,47 +217,105 @@ ROOT_FS_OPS:
 %endmacro
 
 ;
-; Load configuration file
+; Jump to 32-bit ELF space
 ;
-                pm_call pm_load_config
-		jz no_config_file
+		pm_call load_env32
+		jmp kaboom		; load_env32() shouldn't return. If it does, then kaboom!
+
+print_hello:
+enter_command:
+auto_boot:
+		pm_call hello
 
 ;
-; Now we have the config file open.  Parse the config file and
-; run the user interface.
+; Save hardwired DHCP options.  This is done before the C environment
+; is initialized, so it has to be done in assembly.
 ;
-%include "ui.inc"
+%define MAX_DHCP_OPTS	4096
+		bits 32
+
+		section .savedata
+		global bdhcp_data, adhcp_data
+bdhcp_data:	resb MAX_DHCP_OPTS
+adhcp_data:	resb MAX_DHCP_OPTS
+
+		section .textnr
+pm_save_data:
+		mov eax,MAX_DHCP_OPTS
+		movzx ecx,word [bdhcp_len]
+		cmp ecx,eax
+		jna .oksize
+		mov ecx,eax
+		mov [bdhcp_len],ax
+.oksize:
+		mov esi,[bdhcp_offset]
+		add esi,_start
+		mov edi,bdhcp_data
+		add ecx,3
+		shr ecx,2
+		rep movsd
+
+adhcp_copy:
+		movzx ecx,word [adhcp_len]
+		cmp ecx,eax
+		jna .oksize
+		mov ecx,eax
+		mov [adhcp_len],ax
+.oksize:
+		mov esi,[adhcp_offset]
+		add esi,_start
+		mov edi,adhcp_data
+		add ecx,3
+		shr ecx,2
+		rep movsd
+		ret
+
+		bits 16
+
+; As core/ui.inc used to be included here in core/pxelinux.asm, and it's no
+; longer used, its global variables that were previously used by
+; core/pxelinux.asm are now declared here.
+		section .bss16
+		alignb 4
+Kernel_EAX	resd 1
+Kernel_SI	resw 1
+
+		section .bss16
+		alignb 4
+ThisKbdTo	resd 1			; Temporary holder for KbdTimeout
+ThisTotalTo	resd 1			; Temporary holder for TotalTimeout
+KernelExtPtr	resw 1			; During search, final null pointer
+FuncFlag	resb 1			; Escape sequences received from keyboard
+KernelType	resb 1			; Kernel type, from vkernel, if known
+		global KernelName
+KernelName	resb FILENAME_MAX	; Mangled name for kernel
+		section .data16
+		extern IPOption
+		global IPAppends, numIPAppends
+		alignz 2
+IPAppends	dw IPOption
+numIPAppends	equ ($-IPAppends)/2
+
+		section .text16
+;
+; COMBOOT-loading code
+;
+%include "comboot.inc"
+%include "com32.inc"
 
 ;
-; Boot to the local disk by returning the appropriate PXE magic.
-; AX contains the appropriate return code.
+; Boot sector loading code
 ;
-local_boot:
-		push cs
-		pop ds
-		mov [LocalBootType],ax
-		call vgaclearmode
-		mov si,localboot_msg
-		call writestr_early
-		; Restore the environment we were called with
-		pm_call reset_pxe
-		call cleanup_hardware
-		lss sp,[InitStack]
-		pop gs
-		pop fs
-		pop es
-		pop ds
-		popad
-		mov ax,[cs:LocalBootType]
-		cmp ax,-1			; localboot -1 == INT 18h
-		je .int18
-		popfd
-		retf				; Return to PXE
-.int18:
-		popfd
-		int 18h
-		jmp 0F000h:0FFF0h
-		hlt
+
+;
+; Abort loading code
+;
+
+;
+; Hardware cleanup common code
+;
+
+%include "localboot.inc"
 
 ;
 ; kaboom: write a message and bail out.  Wait for quite a while,
@@ -340,14 +351,13 @@ kaboom:
 		je .wait3
 		loop .wait2,ecx
 		mov al,'.'
-		call writechr
+		pm_call pm_writechr
 		pop cx
 		loop .wait1
 .keypress:
-		call crlf
+		pm_call crlf
 		mov word [BIOS_magic],0	; Cold reboot
 		jmp 0F000h:0FFF0h	; Reset vector address
-
 
 ;
 ; pxenv
@@ -366,9 +376,9 @@ pxenv:
 		pushad
 
 		; We may be removing ourselves from memory
-		cmp bx,0073h		; PXENV_RESTART_TFTP
+		cmp bx,PXENV_RESTART_TFTP
 		jz .disable_timer
-		cmp bx,00E5h		; gPXE PXENV_FILE_EXEC
+		cmp bx,PXENV_FILE_EXEC
 		jnz .store_stack
 
 .disable_timer:
@@ -403,9 +413,9 @@ pxenv:
 		popad
 
 		; If the call failed, it could return.
-		cmp bx,0073h
+		cmp bx,PXENV_RESTART_TFTP
 		jz .enable_timer
-		cmp bx,00E5h
+		cmp bx,PXENV_FILE_EXEC
 		jnz .pop_flags
 
 .enable_timer:
@@ -493,6 +503,18 @@ gpxe_unload:
 .plain:
 		ret
 
+writestr_early:
+		pm_call pm_writestr
+		ret
+
+pollchar:
+		pm_call pm_pollchar
+		ret
+
+getchar:
+		pm_call pm_getchar
+		ret
+
 		section .data16
 		alignz 4
 pxe_file_exit_hook:
@@ -508,10 +530,6 @@ pxe_file_exit_hook:
 ; -----------------------------------------------------------------------------
 
 %include "common.inc"		; Universal modules
-%include "writestr.inc"		; String output
-writestr_early	equ writestr
-%include "writehex.inc"		; Hexadecimal output
-%include "rawcon.inc"		; Console I/O w/o using the console functions
 
 ; -----------------------------------------------------------------------------
 ;  Begin data section
@@ -519,6 +537,7 @@ writestr_early	equ writestr
 
 		section .data16
 
+		global copyright_str, syslinux_banner
 copyright_str   db ' Copyright (C) 1994-'
 		asciidec YEAR
 		db ' H. Peter Anvin et al', CR, LF, 0
@@ -526,23 +545,6 @@ err_bootfailed	db CR, LF, 'Boot failed: press a key to retry, or wait for reset.
 bailmsg		equ err_bootfailed
 localboot_msg	db 'Booting from local disk...', CR, LF, 0
 syslinux_banner	db CR, LF, MY_NAME, ' ', VERSION_STR, ' ', DATE_STR, ' ', 0
-
-;
-; Config file keyword table
-;
-%include "keywords.inc"
-
-;
-; Extensions to search for (in *forward* order).
-; (.bs and .bss16 are disabled for PXELINUX, since they are not supported)
-;
-		alignz 4
-exten_table:	db '.cbt'		; COMBOOT (specific)
-		db '.0', 0, 0		; PXE bootstrap program
-		db '.com'		; COMBOOT (same as DOS)
-		db '.c32'		; COM32
-exten_table_end:
-		dd 0, 0			; Need 8 null bytes here
 
 ;
 ; Misc initialized (data) variables

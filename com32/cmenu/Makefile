@@ -17,41 +17,41 @@
 
 NOGPL := 1
 
-# This must be defined before com32.mk is included
-LIBS   = libmenu/libmenu.a
+LIBS  = libmenu/libmenu.c32 \
+        $(com32)/libutil/libutil_com.c32 \
+        $(com32)/lib/libcom32.c32
 
 topdir = ../..
 MAKEDIR = $(topdir)/mk
-include $(MAKEDIR)/com32.mk
+include $(MAKEDIR)/elf.mk
 
 CFLAGS	  += -I./libmenu
 
 LIBMENU = libmenu/syslnx.o libmenu/com32io.o libmenu/tui.o \
-	libmenu/menu.o libmenu/passwords.o libmenu/des.o libmenu/help.o
+	libmenu/menu.o libmenu/passwords.o libmenu/des.o libmenu/help.o \
+	$(com32)/libutil/libutil_com.c32 $(com32)/lib/libcom32.c32
 
 CMENUS = $(patsubst %.c,%.c32,$(wildcard *.c))
 IMENUS = $(patsubst %.menu,%.c32,$(wildcard *.menu))
 
-MENUS = $(CMENUS) $(IMENUS)
+MENUS = $(LIBS) $(CMENUS) $(IMENUS)
 
 .SUFFIXES: .S .c .o .elf .c32 .menu
 
 .PRECIOUS: %.c
 %.c: %.menu adv_menu.tpl
-	python menugen.py --input=$< --output=$@ --template=adv_menu.tpl
+	$(PYTHON) menugen.py --input=$< --output=$@ --template=adv_menu.tpl
 
-all: menus
+all:	menus
 
-libmenu/libmenu.a: $(LIBMENU)
-	-rm -f $@
-	$(AR) cq $@ $^
-	$(RANLIB) $@
+libmenu/libmenu.c32: $(LIBMENU)
+	$(LD) -shared $(LDFLAGS) -o $@ $^
 
 tidy dist:
-	rm -f *.o *.lo *.a *.lst *.elf .*.d */.*.d
+	rm -f *.o *.lo *.c32 *.lst *.elf .*.d */.*.d
 
 libclean:
-	rm -f libmenu/*.o libmenu/*.a
+	rm -f libmenu/*.o libmenu/*.c32
 
 clean: tidy menuclean libclean
 	rm -f *.lss *.c32 *.com

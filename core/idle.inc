@@ -22,6 +22,7 @@ reset_idle:
 		sti		; Guard against BIOS/PXE brokenness...
 		ret
 
+		global do_idle:function hidden
 do_idle:
 		push eax
 		push ds
@@ -36,20 +37,20 @@ do_idle:
 		push si
 		push cx
 		mov si,hlt_err
-		call writestr
+		pm_call pm_writestr
 		mov si,sp
 		add si,10
 		mov cx,16
 .errloop:
 		ss lodsw
-		call writehex4
+		pm_call pm_writehex4
 		dec cx
 		jz .endloop
 		mov al,' '
-		call writechr
+		pm_call pm_writechr
 		jmp .errloop
 .endloop:
-		call crlf
+		pm_call crlf
 		pop cx
 		pop si
 		sti
@@ -71,10 +72,8 @@ do_idle:
 
 		section .data16
 		alignz 4
-		global _IdleTimer
+		global _IdleTimer:data hidden
 _IdleTimer	dd 0
-		global NoHalt
-NoHalt		dw 0
 
 hlt_err		db 'ERROR: idle with IF=0', CR, LF, 0 
 

@@ -41,6 +41,7 @@
 #include "libfat.h"
 #include "setadv.h"
 #include "syslxopt.h"
+#include "syslxfs.h"
 
 char *program;			/* Name of program */
 pid_t mypid;
@@ -124,6 +125,64 @@ int libfat_xpread(intptr_t pp, void *buf, size_t secsize,
     return xpread(pp, buf, secsize, offset);
 }
 
+static int move_file(char *filename)
+{
+    char target_file[4096], command[5120];
+    char *cp = target_file, *ep = target_file + sizeof target_file - 16;
+    const char *sd;
+    int slash = 1;
+    int status;
+
+    cp += sprintf(cp, "'s:/");
+    for (sd = opt.directory; *sd; sd++) {
+	if (*sd == '/' || *sd == '\\') {
+	    if (slash)
+		continue;	/* Remove duplicated slashes */
+	    slash = 1;
+	} else if (*sd == '\'' || *sd == '!') {
+	    slash = 0;
+	    if (cp < ep)
+		*cp++ = '\'';
+	    if (cp < ep)
+		*cp++ = '\\';
+	    if (cp < ep)
+		*cp++ = *sd;
+	    if (cp < ep)
+		*cp++ = '\'';
+	    continue;
+	} else {
+	    slash = 0;
+	}
+
+	if (cp < ep)
+	    *cp++ = *sd;
+    }
+    if (!slash)
+	*cp++ = '/';
+    sprintf(cp, "%s'", filename);
+
+    /* This command may fail legitimately */
+    sprintf(command, "mattrib -h -r -s %s 2>/dev/null", target_file);
+    status = system(command);
+    (void)status;		/* Keep _FORTIFY_SOURCE happy */
+
+    sprintf(command, "mmove -D o -D O s:/%s %s", filename, target_file);
+    status = system(command);
+
+    if (!WIFEXITED(status) || WEXITSTATUS(status)) {
+	fprintf(stderr,
+		"%s: warning: unable to move %s\n", program, filename);
+
+	sprintf(command, "mattrib +r +h +s s:/%s", filename);
+	status = system(command);
+    } else {
+	sprintf(command, "mattrib +r +h +s %s", target_file);
+	status = system(command);
+    }
+
+    return status;
+}
+
 int main(int argc, char *argv[])
 {
     static unsigned char sectbuf[SECTOR_SIZE];
@@ -197,7 +256,7 @@ int main(int argc, char *argv[])
     /*
      * Check to see that what we got was indeed an MS-DOS boot sector/superblock
      */
-    if ((errmsg = syslinux_check_bootsect(sectbuf))) {
+    if ((errmsg = syslinux_check_bootsect(sectbuf, NULL))) {
 	die(errmsg);
     }
 
@@ -283,56 +342,7 @@ int main(int argc, char *argv[])
 
     /* Move ldlinux.sys to the desired location */
     if (opt.directory) {
-	char target_file[4096], command[5120];
-	char *cp = target_file, *ep = target_file + sizeof target_file - 16;
-	const char *sd;
-	int slash = 1;
-
-	cp += sprintf(cp, "'s:/");
-	for (sd = opt.directory; *sd; sd++) {
-	    if (*sd == '/' || *sd == '\\') {
-		if (slash)
-		    continue;	/* Remove duplicated slashes */
-		slash = 1;
-	    } else if (*sd == '\'' || *sd == '!') {
-		slash = 0;
-		if (cp < ep)
-		    *cp++ = '\'';
-		if (cp < ep)
-		    *cp++ = '\\';
-		if (cp < ep)
-		    *cp++ = *sd;
-		if (cp < ep)
-		    *cp++ = '\'';
-		continue;
-	    } else {
-		slash = 0;
-	    }
-
-	    if (cp < ep)
-		*cp++ = *sd;
-	}
-	if (!slash)
-	    *cp++ = '/';
-	strcpy(cp, "ldlinux.sys'");
-
-	/* This command may fail legitimately */
-	sprintf(command, "mattrib -h -r -s %s 2>/dev/null", target_file);
-	status = system(command);
-	(void)status;		/* Keep _FORTIFY_SOURCE happy */
-
-	sprintf(command, "mmove -D o -D O s:/ldlinux.sys %s", target_file);
-	status = system(command);
-
-	if (!WIFEXITED(status) || WEXITSTATUS(status)) {
-	    fprintf(stderr,
-		    "%s: warning: unable to move ldlinux.sys\n", program);
-
-	    status = system("mattrib +r +h +s s:/ldlinux.sys");
-	} else {
-	    sprintf(command, "mattrib +r +h +s %s", target_file);
-	    status = system(command);
-	}
+	status = move_file("ldlinux.sys");
     } else {
 	status = system("mattrib +r +h +s s:/ldlinux.sys");
     }
@@ -340,6 +350,30 @@ int main(int argc, char *argv[])
     if (!WIFEXITED(status) || WEXITSTATUS(status)) {
 	fprintf(stderr,
 		"%s: warning: failed to set system bit on ldlinux.sys\n",
+		program);
+    }
+
+    /* This command may fail legitimately */
+    status = system("mattrib -h -r -s s:/ldlinux.c32 2>/dev/null");
+    (void)status;		/* Keep _FORTIFY_SOURCE happy */
+
+    mtp = popen("mcopy -D o -D O -o - s:/ldlinux.c32", "w");
+    if (!mtp ||	fwrite(syslinux_ldlinuxc32, 1, syslinux_ldlinuxc32_len, mtp)
+	!= syslinux_ldlinuxc32_len ||
+	(status = pclose(mtp), !WIFEXITED(status) || WEXITSTATUS(status))) {
+	die("failed to create ldlinux.c32");
+    }
+
+    /* Move ldlinux.c32 to the desired location */
+    if (opt.directory) {
+	status = move_file("ldlinux.c32");
+    } else {
+	status = system("mattrib +r +h +s s:/ldlinux.c32");
+    }
+
+    if (!WIFEXITED(status) || WEXITSTATUS(status)) {
+	fprintf(stderr,
+		"%s: warning: failed to set system bit on ldlinux.c32\n",
 		program);
     }
 
@@ -356,7 +390,7 @@ int main(int argc, char *argv[])
     xpread(dev_fd, sectbuf, SECTOR_SIZE, opt.offset);
 
     /* Copy the syslinux code into the boot sector */
-    syslinux_make_bootsect(sectbuf);
+    syslinux_make_bootsect(sectbuf, VFAT);
 
     /* Write new boot sector */
     xpwrite(dev_fd, sectbuf, SECTOR_SIZE, opt.offset);

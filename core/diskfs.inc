@@ -60,7 +60,7 @@ vk_end:		equ $			; Should be <= vk_size
 ; Memory below this point is reserved for the BIOS and the MBR
 ;
 		section .earlybss
-		global trackbuf
+		global trackbuf:data hidden
 trackbufsize	equ 8192
 trackbuf	resb trackbufsize	; Track buffer goes here
 		; ends at 2800h
@@ -69,7 +69,6 @@ trackbuf	resb trackbufsize	; Track buffer goes here
 ; Common bootstrap code for disk-based derivatives
 ;
 %include "diskstart.inc"
-
 
 ;
 ; Now, everything is "up and running"... patch kaboom for more
@@ -84,47 +83,70 @@ trackbuf	resb trackbufsize	; Track buffer goes here
 		stosw
 
 ;
-; Now we're all set to start with our *real* business.	First load the
-; configuration file (if any) and parse it.
+; If we get to this point ldlinux.c32 failed to run. There's nothing
+; left to do but inform that user that something went wrong.
 ;
-; In previous versions I avoided using 32-bit registers because of a
-; rumour some BIOSes clobbered the upper half of 32-bit registers at
-; random.  I figure, though, that if there are any of those still left
-; they probably won't be trying to install Linux on them...
+enter_command:
+auto_boot:
+		jmp kaboom
+
+		section .bss16
+		alignb 4
+ThisKbdTo	resd 1			; Temporary holder for KbdTimeout
+ThisTotalTo	resd 1			; Temporary holder for TotalTimeout
+KernelExtPtr	resw 1			; During search, final null pointer
+FuncFlag	resb 1			; Escape sequences received from keyboard
+KernelType	resb 1			; Kernel type, from vkernel, if known
+		global KernelName
+KernelName	resb FILENAME_MAX	; Mangled name for kernel
+		section .data16
+		global IPAppends, numIPAppends
+%if IS_PXELINUX
+		extern IPOption
+		alignz 2
+IPAppends	dw IPOption
+numIPAppends	equ ($-IPAppends)/2
+%else
+IPAppends	equ 0
+numIPAppends	equ 0
+%endif
+
+		section .text16
 ;
-; The code is still ripe with 16-bitisms, though.  Not worth the hassle
-; to take'm out.  In fact, we may want to put them back if we're going
-; to boot ELKS at some point.
+; COMBOOT-loading code
+;
+%include "comboot.inc"
+%include "com32.inc"
+
+;
+; Boot sector loading code
 ;
 
 ;
-; Load configuration file
+; Abort loading code
 ;
-		pm_call pm_load_config
-		jz no_config_file
 
 ;
-; Now we have the config file open.  Parse the config file and
-; run the user interface.
+; Hardware cleanup common code
 ;
-%include "ui.inc"
 
-;
+%include "localboot.inc"
+
 ;
 ; kaboom2: once everything is loaded, replace the part of kaboom
 ;	   starting with "kaboom.patch" with this part
 
 kaboom2:
 		mov si,err_bootfailed
-		call writestr
+		pm_call pm_writestr
 		cmp byte [kaboom.again+1],18h	; INT 18h version?
 		je .int18
-		call getchar
-		call vgaclearmode
+		pm_call pm_getchar
+		pm_call syslinux_force_text_mode
 		int 19h			; And try once more to boot...
 .norge:		jmp short .norge	; If int 19h returned; this is the end
 .int18:
-		call vgaclearmode
+		pm_call syslinux_force_text_mode
 		int 18h
 .noreg:		jmp short .noreg	; Nynorsk
 
@@ -133,40 +155,18 @@ kaboom2:
 ; -----------------------------------------------------------------------------
 
 %include "common.inc"		; Universal modules
-%include "plaincon.inc"		; writechr
-%include "writestr.inc"		; String output
-%include "writehex.inc"		; Hexadecimal output
-%include "localboot.inc"	; Disk-based local boot
 
 ; -----------------------------------------------------------------------------
 ;  Begin data section
 ; -----------------------------------------------------------------------------
 
 		section .data16
+		global copyright_str
 copyright_str   db ' Copyright (C) 1994-'
 		asciidec YEAR
 		db ' H. Peter Anvin et al', CR, LF, 0
 err_bootfailed	db CR, LF, 'Boot failed: please change disks and press '
 		db 'a key to continue.', CR, LF, 0
-
-;
-; Config file keyword table
-;
-%include "keywords.inc"
-
-;
-; Extensions to search for (in *forward* order).
-;
-		alignz 4
-exten_table:	db '.cbt'		; COMBOOT (specific)
-%if IS_SYSLINUX
-		db '.bss'		; Boot sector (add superblock)
-%endif
-		db '.bs', 0		; Boot sector
-		db '.com'		; COMBOOT (same as DOS)
-		db '.c32'		; COM32
-exten_table_end:
-		dd 0, 0			; Need 8 null bytes here
 
 ;
 ; Misc initialized (data) variables

@@ -96,8 +96,6 @@ static inline void *ptr(void *img, uint16_t *offset_p)
  * Returns the number of modified bytes in ldlinux.sys if successful,
  * otherwise -1.
  */
-#define NADV 2
-
 int syslinux_patch(const sector_t *sectp, int nsectors,
 		   int stupid, int raid_mode,
 		   const char *subdir, const char *subvol)
@@ -109,7 +107,7 @@ int syslinux_patch(const sector_t *sectp, int nsectors,
     int nsect = ((boot_image_len + SECTOR_SIZE - 1) >> SECTOR_SHIFT) + 2;
     uint32_t csum;
     int i, dw, nptrs;
-    struct boot_sector *sbs = (struct boot_sector *)boot_sector;
+    struct fat_boot_sector *sbs = (struct fat_boot_sector *)boot_sector;
     uint64_t *advptrs;
 
     if (nsectors < nsect)
@@ -149,11 +147,13 @@ int syslinux_patch(const sector_t *sectp, int nsectors,
     ex = ptr(boot_image, &epa->secptroffset);
     nptrs = get_16_sl(&epa->secptrcnt);
 
+#if 0
     if (nsect > nptrs) {
 	/* Not necessarily an error in this case, but a general problem */
 	fprintf(stderr, "Insufficient extent space, build error!\n");
 	exit(1);
     }
+#endif
 
     /* -1 for the pointer in the boot sector, -2 for the two ADVs */
     generate_extents(ex, nptrs, sectp, nsect-1-2);

@@ -62,7 +62,7 @@ static const struct messages messages[MSG_COUNT] = {
                       __p; })
 
 /* Must match enum kernel_type */
-const char *const kernel_types[] = {
+static const char *const kernel_types[] = {
     "none",
     "localboot",
     "kernel",
@@ -392,7 +392,9 @@ static void record(struct menu *m, struct labeldata *ld, const char *append)
 	    break;
 	}
 
-	if (ld->menudefault && me->action == MA_CMD)
+	if (ld->menudefault && (me->action == MA_CMD ||
+				me->action == MA_GOTO ||
+				me->action == MA_GOTO_UNRES))
 	    m->defentry = m->nentries - 1;
     }
 

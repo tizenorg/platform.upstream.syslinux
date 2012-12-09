@@ -92,7 +92,7 @@ BannerPtr	dw syslinux_banner - LDLINUX_SYS
 ; Base directory name and subvolume, if applicable.
 ;
 %define HAVE_CURRENTDIRNAME
-		global CurrentDirName, SubvolName
+		global CurrentDirName:data hidden, SubvolName:data hidden
 CurrentDirName	times CURRENTDIR_MAX db 0
 SubvolName	times SUBVOL_MAX db 0
 
@@ -142,6 +142,7 @@ print_bios:
 		call writestr_early
 
 		section .earlybss
+		global BIOSName
 		alignb 2
 %define	HAVE_BIOSNAME 1
 BIOSName	resw 1
@@ -231,7 +232,7 @@ verify_checksum:
 ;
 ;            This routine assumes CS == DS.
 ;
-		global getlinsec
+		global getlinsec:function hidden
 getlinsec:
 		pushad
 		add eax,[Hidden]		; Add partition offset
@@ -504,6 +505,7 @@ expand_super:
 		mov di,[bsSecPerTrack]
 		movzx ebp,word [MaxTransfer]
 		pm_call fs_init
+		pm_call load_env32
 		popad
 
 		section .bss16
@@ -513,6 +515,7 @@ SuperInfo	resq 16			; The first 16 bytes expanded 8 times
 ; Banner information not needed in sector 1
 ;
 		section .data16
+		global syslinux_banner
 syslinux_banner	db CR, LF, MY_NAME, ' ', VERSION_STR
 late_banner	db ' ', DATE_STR, 0
 

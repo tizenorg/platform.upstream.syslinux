@@ -28,6 +28,7 @@
 ; reduce the code size...
 ;
 
+		global StackBuf
 StackBuf	equ STACK_TOP-44-92	; Start the stack here (grow down - 4K)
 PartInfo	equ StackBuf
 .mbr		equ PartInfo
@@ -102,7 +103,6 @@ superblock_len_fat32	equ $-superblock+54
 		zb 54			; Maximum needed size
 superblock_max	equ $-superblock
 
-		global SecPerClust
 SecPerClust	equ bxSecPerClust
 
 ;
@@ -384,7 +384,11 @@ getonesec_cbios:
 ;
 ; kaboom: write a message and bail out.
 ;
+%ifdef BINFMT
 		global kaboom
+%else
+		global kaboom:function hidden
+%endif
 disk_error:
 kaboom:
 		xor si,si

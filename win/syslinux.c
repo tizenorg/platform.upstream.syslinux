@@ -27,6 +27,8 @@
 #include "setadv.h"
 #include "sysexits.h"
 #include "syslxopt.h"
+#include "syslxfs.h"
+#include "ntfssect.h"
 
 #ifdef __GNUC__
 # define noreturn void __attribute__((noreturn))
@@ -48,16 +50,16 @@ void error(char *msg);
 // The following struct should be in the ntddstor.h file, but I didn't have it.
 // mingw32 has <ddk/ntddstor.h>, but including that file causes all kinds
 // of other failures.  mingw64 has it in <winioctl.h>.
-#ifndef __x86_64__
-typedef struct _STORAGE_DEVICE_NUMBER {
+// Thus, instead of STORAGE_DEVICE_NUMBER, use a lower-case private
+// definition...
+struct storage_device_number {
     DEVICE_TYPE DeviceType;
     ULONG DeviceNumber;
     ULONG PartitionNumber;
-} STORAGE_DEVICE_NUMBER, *PSTORAGE_DEVICE_NUMBER;
-#endif
+};
 
 BOOL GetStorageDeviceNumberByHandle(HANDLE handle,
-				    const STORAGE_DEVICE_NUMBER * sdn)
+				    const struct storage_device_number *sdn)
 {
     BOOL result = FALSE;
     DWORD count;
@@ -234,6 +236,57 @@ int libfat_readfile(intptr_t pp, void *buf, size_t secsize,
     return secsize;
 }
 
+static void move_file(char *pathname, char *filename)
+{
+    char new_name[strlen(opt.directory) + 16];
+    char *cp = new_name + 3;
+    const char *sd;
+    int slash = 1;
+
+    new_name[0] = opt.device[0];
+    new_name[1] = ':';
+    new_name[2] = '\\';
+
+    for (sd = opt.directory; *sd; sd++) {
+	char c = *sd;
+
+	if (c == '/' || c == '\\') {
+	    if (slash)
+		continue;
+	    c = '\\';
+	    slash = 1;
+	} else {
+	    slash = 0;
+	}
+
+	*cp++ = c;
+    }
+
+    /* Skip if subdirectory == root */
+    if (cp > new_name + 3) {
+	if (!slash)
+	    *cp++ = '\\';
+
+	memcpy(cp, filename, 12);
+
+	/* Delete any previous file */
+	SetFileAttributes(new_name, FILE_ATTRIBUTE_NORMAL);
+	DeleteFile(new_name);
+	if (!MoveFile(pathname, new_name)) {
+	    fprintf(stderr,
+		    "Failed to move %s to destination directory: %s\n",
+		    filename, opt.directory);
+
+	    SetFileAttributes(pathname, FILE_ATTRIBUTE_READONLY |
+			      FILE_ATTRIBUTE_SYSTEM |
+			      FILE_ATTRIBUTE_HIDDEN);
+	} else
+	    SetFileAttributes(new_name, FILE_ATTRIBUTE_READONLY |
+			      FILE_ATTRIBUTE_SYSTEM |
+			      FILE_ATTRIBUTE_HIDDEN);
+    }
+}
+
 int main(int argc, char *argv[])
 {
     HANDLE f_handle, d_handle;
@@ -247,6 +300,7 @@ int main(int argc, char *argv[])
     static char drive_name[] = "\\\\.\\?:";
     static char drive_root[] = "?:\\";
     static char ldlinux_name[] = "?:\\ldlinux.sys";
+    static char ldlinuxc32_name[] = "?:\\ldlinux.c32";
     const char *errmsg;
     struct libfat_filesystem *fs;
     libfat_sector_t s, *secp;
@@ -254,6 +308,7 @@ int main(int argc, char *argv[])
     int ldlinux_sectors;
     uint32_t ldlinux_cluster;
     int nsectors;
+    int fs_type;
 
     if (!checkver()) {
 	fprintf(stderr,
@@ -287,6 +342,7 @@ int main(int argc, char *argv[])
     /* Determines the drive type */
     drive_name[4] = opt.device[0];
     ldlinux_name[0] = opt.device[0];
+    ldlinuxc32_name[0] = opt.device[0];
     drive_root[0] = opt.device[0];
     drive_type = GetDriveType(drive_root);
 
@@ -326,8 +382,10 @@ int main(int argc, char *argv[])
 	exit(1);
     }
 
-    /* Check to see that what we got was indeed an MS-DOS boot sector/superblock */
-    if ((errmsg = syslinux_check_bootsect(sectbuf))) {
+    /* Check to see that what we got was indeed an FAT/NTFS
+     * boot sector/superblock
+     */
+    if ((errmsg = syslinux_check_bootsect(sectbuf, &fs_type))) {
 	fprintf(stderr, "%s\n", errmsg);
 	exit(1);
     }
@@ -335,10 +393,12 @@ int main(int argc, char *argv[])
     /* Change to normal attributes to enable deletion */
     /* Just ignore error if the file do not exists */
     SetFileAttributes(ldlinux_name, FILE_ATTRIBUTE_NORMAL);
+    SetFileAttributes(ldlinuxc32_name, FILE_ATTRIBUTE_NORMAL);
 
     /* Delete the file */
     /* Just ignore error if the file do not exists */
     DeleteFile(ldlinux_name);
+    DeleteFile(ldlinuxc32_name);
 
     /* Initialize the ADV -- this should be smarter */
     syslinux_reset_adv(syslinux_adv);
@@ -379,6 +439,38 @@ int main(int argc, char *argv[])
     ldlinux_sectors = (syslinux_ldlinux_len + 2 * ADV_SIZE + SECTOR_SIZE - 1)
 	>> SECTOR_SHIFT;
     sectors = calloc(ldlinux_sectors, sizeof *sectors);
+    if (fs_type == NTFS) {
+	DWORD err;
+	S_NTFSSECT_VOLINFO vol_info;
+	LARGE_INTEGER vcn, lba, len;
+	S_NTFSSECT_EXTENT extent;
+
+	err = NtfsSectGetVolumeInfo(drive_name + 4, &vol_info);
+	if (err != ERROR_SUCCESS) {
+	    error("Could not fetch NTFS volume info");
+	    exit(1);
+	}
+	secp = sectors;
+	nsectors = 0;
+	for (vcn.QuadPart = 0;
+	     NtfsSectGetFileVcnExtent(f_handle, &vcn, &extent) == ERROR_SUCCESS;
+	     vcn = extent.NextVcn) {
+	    err = NtfsSectLcnToLba(&vol_info, &extent.FirstLcn, &lba);
+	    if (err != ERROR_SUCCESS) {
+		error("Could not translate LDLINUX.SYS LCN to disk LBA");
+		exit(1);
+	    }
+	    lba.QuadPart -= vol_info.PartitionLba.QuadPart;
+	    len.QuadPart = ((extent.NextVcn.QuadPart -
+			     extent.FirstVcn.QuadPart) *
+			    vol_info.SectorsPerCluster);
+	    while (len.QuadPart-- && nsectors < ldlinux_sectors) {
+		*secp++ = lba.QuadPart++;
+		nsectors++;
+	    }
+	}
+	goto map_done;
+    }
     fs = libfat_open(libfat_readfile, (intptr_t) d_handle);
     ldlinux_cluster = libfat_searchdir(fs, 0, "LDLINUX SYS", NULL);
     secp = sectors;
@@ -390,6 +482,7 @@ int main(int argc, char *argv[])
 	s = libfat_nextsector(fs, s);
     }
     libfat_close(fs);
+map_done:
 
     /*
      * Patch ldlinux.sys and the boot sector
@@ -409,7 +502,7 @@ int main(int argc, char *argv[])
 
     /* If desired, fix the MBR */
     if (opt.install_mbr || opt.activate_partition) {
-	STORAGE_DEVICE_NUMBER sdn;
+	struct storage_device_number sdn;
 	if (GetStorageDeviceNumberByHandle(d_handle, &sdn)) {
 	    if (!FixMBR(sdn.DeviceNumber, sdn.PartitionNumber, opt.install_mbr, opt.activate_partition)) {
 		fprintf(stderr,
@@ -425,54 +518,42 @@ int main(int argc, char *argv[])
     CloseHandle(f_handle);
 
     /* Move the file to the desired location */
-    if (opt.directory) {
-	char new_ldlinux_name[strlen(opt.directory) + 16];
-	char *cp = new_ldlinux_name + 3;
-	const char *sd;
-	int slash = 1;
+    if (opt.directory)
+	move_file(ldlinux_name, "ldlinux.sys");
 
-	new_ldlinux_name[0] = opt.device[0];
-	new_ldlinux_name[1] = ':';
-	new_ldlinux_name[2] = '\\';
+    f_handle = CreateFile(ldlinuxc32_name, GENERIC_READ | GENERIC_WRITE,
+			  FILE_SHARE_READ | FILE_SHARE_WRITE,
+			  NULL, CREATE_ALWAYS,
+			  FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_SYSTEM |
+			  FILE_ATTRIBUTE_HIDDEN, NULL);
 
-	for (sd = opt.directory; *sd; sd++) {
-	    char c = *sd;
-
-	    if (c == '/' || c == '\\') {
-		if (slash)
-		    continue;
-		c = '\\';
-		slash = 1;
-	    } else {
-		slash = 0;
-	    }
-
-	    *cp++ = c;
-	}
-
-	/* Skip if subdirectory == root */
-	if (cp > new_ldlinux_name + 3) {
-	    if (!slash)
-		*cp++ = '\\';
-
-	    memcpy(cp, "ldlinux.sys", 12);
-
-	    /* Delete any previous file */
-	    SetFileAttributes(new_ldlinux_name, FILE_ATTRIBUTE_NORMAL);
-	    DeleteFile(new_ldlinux_name);
-	    if (!MoveFile(ldlinux_name, new_ldlinux_name))
-		SetFileAttributes(ldlinux_name, FILE_ATTRIBUTE_READONLY |
-				  FILE_ATTRIBUTE_SYSTEM |
-				  FILE_ATTRIBUTE_HIDDEN);
-	    else
-		SetFileAttributes(new_ldlinux_name, FILE_ATTRIBUTE_READONLY |
-				  FILE_ATTRIBUTE_SYSTEM |
-				  FILE_ATTRIBUTE_HIDDEN);
-	}
+    if (f_handle == INVALID_HANDLE_VALUE) {
+	error("Unable to create ldlinux.c32");
+	exit(1);
     }
 
+    /* Write ldlinux.c32 file */
+    if (!WriteFile(f_handle, syslinux_ldlinuxc32, syslinux_ldlinuxc32_len,
+		   &bytes_written, NULL) ||
+	bytes_written != syslinux_ldlinuxc32_len) {
+	error("Could not write ldlinux.c32");
+	exit(1);
+    }
+
+    /* Now flush the media */
+    if (!FlushFileBuffers(f_handle)) {
+	error("FlushFileBuffers failed");
+	exit(1);
+    }
+
+    CloseHandle(f_handle);
+
+    /* Move the file to the desired location */
+    if (opt.directory)
+	move_file(ldlinuxc32_name, "ldlinux.c32");
+
     /* Make the syslinux boot sector */
-    syslinux_make_bootsect(sectbuf);
+    syslinux_make_bootsect(sectbuf, fs_type);
 
     /* Write the syslinux boot sector into the boot sector */
     if (opt.bootsecfile) {

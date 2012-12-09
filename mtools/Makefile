@@ -8,12 +8,13 @@ CFLAGS	 = $(GCCWARN) -D_FILE_OFFSET_BITS=64 $(OPTFLAGS) $(INCLUDES)
 LDFLAGS	 = 
 
 SRCS     = syslinux.c \
-	   ../libinstaller/fat.c \
+	   ../libinstaller/fs.c \
 	   ../libinstaller/syslxmod.c \
 	   ../libinstaller/syslxopt.c \
 	   ../libinstaller/setadv.c \
 	   ../libinstaller/bootsect_bin.c \
 	   ../libinstaller/ldlinux_bin.c \
+	   ../libinstaller/ldlinuxc32_bin.c \
 	   $(wildcard ../libfat/*.c)
 OBJS	 = $(patsubst %.c,%.o,$(notdir $(SRCS)))
 

@@ -25,7 +25,7 @@ include $(MAKEDIR)/embedded.mk
 -include $(topdir)/version.mk
 
 OPTFLAGS =
-INCLUDES = -I./include -I$(com32)/include
+INCLUDES = -I./include -I$(com32)/include -I$(com32)/lib
 
 # This is very similar to cp437; technically it's for Norway and Denmark,
 # but it's unlikely the characters that are different will be used in
@@ -42,23 +42,27 @@ NASMSRC	 := $(wildcard *.asm)
 NASMHDR  := $(wildcard *.inc)
 CSRC	 := $(wildcard *.c */*.c */*/*.c)
 SSRC	 := $(wildcard *.S */*.S */*/*.S)
-CHDR	 := $(wildcard *.h)
+CHDR	 := $(wildcard *.h */*.h */*/*.h)
 OTHERSRC := keywords
 ALLSRC    = $(NASMSRC) $(NASMHDR) $(CSRC) $(SSRC) $(CHDR) $(OTHERSRC)
 
 COBJ	 := $(patsubst %.c,%.o,$(CSRC))
 SOBJ	 := $(patsubst %.S,%.o,$(SSRC))
 
-LIB	 = libcore.a
-LIBS	 = $(LIB) $(com32)/lib/libcomcore.a $(LIBGCC)
-LIBOBJS	 = $(COBJ) $(SOBJ)
+# Don't include console objects
+COBJS	 = $(filter-out rawcon.o plaincon.o,$(COBJ))
+
+LIB	 = libcom32.a
+LIBS	 = $(LIB) --whole-archive $(com32)/lib/libcom32core.a
+LIBDEP   = $(filter-out -% %start%,$(LIBS))
+LIBOBJS	 = $(COBJS) $(SOBJ)
 
 NASMDEBUG = -g -F dwarf
 NASMOPT  += $(NASMDEBUG)
 
 PREPCORE = ../lzo/prepcore
 
-# CFLAGS	+= -DDEBUG=1
+CFLAGS += -D__SYSLINUX_CORE__
 
 # The DATE is set on the make command line when building binaries for
 # official release.  Otherwise, substitute a hex string that is pretty much
@@ -78,7 +82,7 @@ kwdhash.gen: keywords genhash.pl
 .PRECIOUS: %.elf
 
 %.raw: %.elf
-	$(OBJCOPY) -O binary $< $(@:.bin=.raw)
+	$(OBJCOPY) -O binary -S $< $(@:.bin=.raw)
 
 # GNU make 3.82 gets confused by the first form
 .PRECIOUS: %.raw
@@ -91,12 +95,30 @@ kwdhash.gen: keywords genhash.pl
 		-DHEXDATE="$(HEXDATE)" \
 		-l $(@:.o=.lsr) -o $@ -MP -MD .$@.d $<
 
-%.elf: %.o $(LIBS) syslinux.ld
-	$(LD) $(LDFLAGS) -T syslinux.ld -M -o $@ $< \
-		--start-group $(LIBS) --end-group \
+AUXLIBS = libisolinux.a libisolinux-debug.a libldlinux.a libpxelinux.a
+
+%.elf: %.o $(LIBDEP) syslinux.ld $(AUXLIBS)
+	$(LD) $(LDFLAGS) -Bsymbolic -pie -E --hash-style=gnu -T syslinux.ld -M -o $@ $< \
+		--start-group $(LIBS) lib$(patsubst %.elf,%.a,$@) --end-group \
 		> $(@:.elf=.map)
 	$(OBJDUMP) -h $@ > $(@:.elf=.sec)
 	$(PERL) lstadjust.pl $(@:.elf=.lsr) $(@:.elf=.sec) $(@:.elf=.lst)
+
+libisolinux.a: rawcon.o
+	rm -f $@
+	$(AR) cq $@ $^
+	$(RANLIB) $@
+
+libisolinux-debug.a: libisolinux.a
+	cp $^ $@
+
+libpxelinux.a: libisolinux.a
+	cp $^ $@
+
+libldlinux.a: plaincon.o
+	rm -f $@
+	$(AR) cq $@ $^
+	$(RANLIB) $@
 
 $(LIB): $(LIBOBJS)
 	rm -f $@
