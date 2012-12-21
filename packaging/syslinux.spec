@@ -7,7 +7,6 @@ Summary:        Kernel loader which uses a FAT, ext2/3 or iso9660 filesystem or 
 Url:            http://syslinux.zytor.com/
 Group:          System/Boot
 Source0:        ftp://ftp.kernel.org/pub/linux/utils/boot/syslinux/%{name}-%{version}.tar.xz
-Source101:      syslinux-rpmlintrc
 BuildRequires:  libext2fs-devel
 BuildRequires:  libuuid-devel
 BuildRequires:  nasm >= 0.98.39
