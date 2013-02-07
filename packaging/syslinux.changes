@@ -1,3 +1,9 @@
+* Thu Feb 07 2013 Anas Nashif <anas.nashif@intel.com> accepted/trunk/20121221.215950@b74b3d0
+- Add rpmlint exception
+
+* Fri Dec 21 2012 Anas Nashif <anas.nashif@intel.com> accepted/trunk/20121221.213755@b74b3d0
+- remove syslinux-rpmlintrc from spec
+
 * Fri Dec 21 2012 Patrick McCarty <patrick.mccarty@linux.intel.com> 0afce2a
 - Package files in /usr/bin/*, but not /usr/bin itself
 
