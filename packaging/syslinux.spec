@@ -2,7 +2,7 @@
 Summary: Kernel loader which uses a FAT, ext2/3 or iso9660 filesystem or a PXE network
 Name: syslinux
 Version: 4.04
-Release: 1
+Release: 2
 License: GPLv2
 Url: http://syslinux.zytor.com/
 Group: System/Boot
