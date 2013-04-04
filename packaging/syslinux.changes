@@ -1,0 +1,6 @@
+* Thu Nov 14 2013 Artem Bityutskiy <artem.bityutskiy@linux.intel.com> 4.07
+- Upgrade to version 4.07 which supports the '-d' option which we need.
+
+* Thu Mar 28 08:53:45 UTC 2013 Artem Bityutskiy <artem.bityutskiy@linux.intel.com> 4.04
+- Back-port the ext2_fs.h patch from upstream to make syslinux compile with the latest
+  kernel headers (v3.7). Fixes TIVI-557.
