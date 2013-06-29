@@ -8,6 +8,7 @@ Url:            http://syslinux.zytor.com/
 Group:          System/Boot
 Source0:        ftp://ftp.kernel.org/pub/linux/utils/boot/syslinux/%{name}-%{version}.tar.xz
 Source1:        syslinux-rpmlintrc
+Source1001: 	syslinux.manifest
 BuildRequires:  libext2fs-devel
 BuildRequires:  libuuid-devel
 BuildRequires:  nasm >= 0.98.39
@@ -66,6 +67,7 @@ booting in the /var/lib/tftpboot directory.
 
 %prep
 %setup -q -n syslinux-%{version}
+cp %{SOURCE1001} .
 
 
 %build
@@ -82,6 +84,7 @@ make CC='%{my_cc}' install-all \
 make CC='%{my_cc}' -C sample tidy
 
 %files
+%manifest %{name}.manifest
 %defattr(-,root,root)
 %{_bindir}/*
 %dir %{_datadir}/syslinux
@@ -94,6 +97,7 @@ make CC='%{my_cc}' -C sample tidy
 %{_datadir}/syslinux/dosutil
 
 %files devel
+%manifest %{name}.manifest
 %defattr(-,root,root)
 %doc COPYING NEWS README doc/*
 %doc sample
@@ -102,11 +106,13 @@ make CC='%{my_cc}' -C sample tidy
 %{_datadir}/syslinux/diag
 
 %files extlinux
+%manifest %{name}.manifest
 %defattr(-,root,root)
 %{_sbindir}/extlinux
 /boot/extlinux
 
 %files tftpboot
+%manifest %{name}.manifest
 %defattr(-,root,root)
 %{_localstatedir}/lib/tftpboot
 
