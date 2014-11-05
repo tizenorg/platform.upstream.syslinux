@@ -1,16 +1,19 @@
 Summary: Kernel loader which uses a FAT, ext2/3 or iso9660 filesystem or a PXE network
 Name: syslinux
-Version: 4.07
-Release: 1
+Version: 6.03
+Release: 0
 License: GPL-2.0
 Url: http://syslinux.zytor.com/
 Group: System/Other
 Source0: ftp://ftp.kernel.org/pub/linux/utils/boot/syslinux/%{name}-%{version}.tar.gz
 Source1001: packaging/syslinux.manifest
+Source10: gnu-efi.tar.bz2
+
 ExclusiveArch: %{ix86} x86_64
 BuildRequires: nasm >= 0.98.39, perl
 BuildRequires: python
 BuildRequires: libuuid-devel
+BuildRequires: git
 
 Autoreq: 0
 %ifarch x86_64
@@ -60,7 +63,7 @@ All the SYSLINUX/PXELINUX modules directly available for network
 booting in the /var/lib/tftpboot directory.
 
 %prep
-%setup -q -n syslinux-%{version}
+%setup -q -a 10 -n %{name}-%{version}
 
 %build
 cp %{SOURCE1001} .
