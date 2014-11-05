@@ -1,23 +1,28 @@
+# -*- rpm -*-
 Summary: Kernel loader which uses a FAT, ext2/3 or iso9660 filesystem or a PXE network
 Name: syslinux
-Version: 4.07
-Release: 1
+Version: 6.03
+Release: 0
 License: GPL-2.0
 Url: http://syslinux.zytor.com/
+#X-Vc-Url: git://git.kernel.org/pub/scm/boot/syslinux/syslinux.git
 Group: System/Other
 Source0: ftp://ftp.kernel.org/pub/linux/utils/boot/syslinux/%{name}-%{version}.tar.gz
 Source1001: packaging/syslinux.manifest
+Source10: gnu-efi.tar.bz2
+
 ExclusiveArch: %{ix86} x86_64
 BuildRequires: nasm >= 0.98.39, perl
 BuildRequires: python
 BuildRequires: libuuid-devel
-
-Autoreq: 0
-%ifarch x86_64
+BuildRequires: git
 Requires: mtools
+
+%ifarch x86_64
 %define my_cc gcc -Wno-sizeof-pointer-memaccess
 %else
-Requires: mtools, libc.so.6
+Autoreq: 0
+Requires: libc.so.6
 %define my_cc gcc -m32 -Wno-sizeof-pointer-memaccess
 %endif
 
@@ -60,16 +65,19 @@ All the SYSLINUX/PXELINUX modules directly available for network
 booting in the /var/lib/tftpboot directory.
 
 %prep
-%setup -q -n syslinux-%{version}
+%setup -q -a 10 -n %{name}-%{version}
 
 %build
 cp %{SOURCE1001} .
-make CC='%{my_cc}' %{?_smp_mflags} clean
-make CC='%{my_cc}' %{?_smp_mflags}
+%define make %__make CC='%{my_cc}'
+
+%make bios clean
+%make bios all
 
 %install
-rm -rf %{buildroot}
-make CC='%{my_cc}' install-all \
+
+%make \
+	bios install-all \
 	INSTALLROOT=%{buildroot} BINDIR=%{_bindir} SBINDIR=%{_sbindir} \
 	LIBDIR=%{_libdir} DATADIR=%{_datadir} \
 	MANDIR=%{_mandir} INCDIR=%{_includedir} \
@@ -94,6 +102,7 @@ rm -rf %{buildroot}
 %files devel
 %manifest syslinux.manifest
 %defattr(-,root,root)
+%license COPYING doc/logo/LICENSE
 %doc NEWS README doc/*
 %doc sample
 %doc %{_mandir}/man*/*
@@ -103,12 +112,14 @@ rm -rf %{buildroot}
 %files extlinux
 %manifest syslinux.manifest
 %defattr(-,root,root)
+%license COPYING
 %{_sbindir}/extlinux
 /boot/extlinux
 
 %files tftpboot
 %manifest syslinux.manifest
 %defattr(-,root,root)
+%license COPYING
 /var/lib/tftpboot
 
 %post extlinux
