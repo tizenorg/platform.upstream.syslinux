@@ -1,3 +1,4 @@
+# -*- rpm -*-
 Summary: Kernel loader which uses a FAT, ext2/3 or iso9660 filesystem or a PXE network
 Name: syslinux
 Version: 6.03
@@ -67,16 +68,22 @@ booting in the /var/lib/tftpboot directory.
 
 %build
 cp %{SOURCE1001} .
-make CC='%{my_cc}' %{?_smp_mflags} clean
-make CC='%{my_cc}' %{?_smp_mflags}
+#touch efi/tiny
+#make CC='%{my_cc}' %{?_smp_mflags} clean
+touch efi/tiny
+make CC='%{my_cc}' -j1 \
+    all_firmware=bios
 
 %install
 rm -rf %{buildroot}
-make CC='%{my_cc}' install-all \
+
+make \
+    CC='%{my_cc}' install \
 	INSTALLROOT=%{buildroot} BINDIR=%{_bindir} SBINDIR=%{_sbindir} \
 	LIBDIR=%{_libdir} DATADIR=%{_datadir} \
 	MANDIR=%{_mandir} INCDIR=%{_includedir} \
-	TFTPBOOT=/var/lib/tftpboot EXTLINUXDIR=/boot/extlinux
+	TFTPBOOT=/var/lib/tftpboot EXTLINUXDIR=/boot/extlinux \
+    all_firmware=bios
 
 %clean
 rm -rf %{buildroot}
@@ -107,12 +114,12 @@ rm -rf %{buildroot}
 %manifest syslinux.manifest
 %defattr(-,root,root)
 %{_sbindir}/extlinux
-/boot/extlinux
+#/boot/extlinux
 
 %files tftpboot
 %manifest syslinux.manifest
 %defattr(-,root,root)
-/var/lib/tftpboot
+#/var/lib/tftpboot
 
 %post extlinux
 # If we have a /boot/extlinux.conf file, assume extlinux is our bootloader
