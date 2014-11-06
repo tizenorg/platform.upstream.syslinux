@@ -2,7 +2,7 @@
 Summary: Kernel loader which uses a FAT, ext2/3 or iso9660 filesystem or a PXE network
 Name: syslinux
 Version: 6.01
-Release: 0
+Release: 20141106.1415282139pcoval
 License: GPL-2.0
 Url: http://syslinux.zytor.com/
 #X-Vc-Url: git://git.zytor.com/syslinux/syslinux.git
@@ -64,23 +64,30 @@ booting in the /var/lib/tftpboot directory.
 
 %prep
 %setup -q -n %{name}-%{version}
+rm -f Makefile.private
 
 %build
 cp %{SOURCE1001} .
 
-%__make %{?_smp_mflags} clean -k \
+%define local_make %__make HAVE_FIRMWARE=1
+
+%local_make %{?_smp_mflags} clean -k \
 	CC='%{my_cc}' \
 	firmware=bios \
     || :
 
-%__make  \
+%local_make \
+	CC='%{my_cc}' \
+	firmware=bios
+
+%local_make all \
 	CC='%{my_cc}' \
 	firmware=bios
 
 %install
 rm -rf %{buildroot}
 
-%__make %{?_smp_mflags} install \
+%local_make install-all \
 	CC='%{my_cc}' \
 	INSTALLROOT=%{buildroot} BINDIR=%{_bindir} SBINDIR=%{_sbindir} \
 	LIBDIR=%{_libdir} DATADIR=%{_datadir} \
