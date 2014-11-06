@@ -70,6 +70,8 @@ find . -iname "*.sh" -exec chmod u+rwx '{}' \;
 %build
 cp %{SOURCE1001} .
 
+ls
+
 %__make -C gnu-efi/gnu-efi-3.0
 %make_install -C gnu-efi/gnu-efi-3.0/
 
