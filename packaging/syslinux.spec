@@ -69,9 +69,11 @@ booting in the /var/lib/tftpboot directory.
 %build
 cp %{SOURCE1001} .
 #touch efi/tiny
-#make CC='%{my_cc}' %{?_smp_mflags} clean
+
+%__make CC='%{my_cc}' %{?_smp_mflags} clean
+
 touch efi/tiny
-make CC='%{my_cc}' -j1 \
+%__make CC='%{my_cc}' -j1 \
     all_firmware=bios
 
 %install
