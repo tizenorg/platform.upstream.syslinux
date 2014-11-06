@@ -43,7 +43,7 @@ LIBFLAGS = -DDYNAMIC_CRC_TABLE -DPNG_NO_CONSOLE_IO \
 # fallback anyway, just use that on old machines...
 # LIBFLAGS += -DPNG_NO_FLOATING_POINT_SUPPORTED
 
-REQFLAGS  = $(GCCOPT) -g -D__COM32__ -D__FIRMWARE_$(FIRMWARE)__ \
+REQFLAGS  = $(GCCOPT) -g -D__COM32__ \
 	    -nostdinc -iwithprefix include -I. -I$(SRC)/sys \
 	    -I$(SRC)/../include -I$(com32)/include/sys \
 	    -I$(topdir)/core/include -I$(com32)/lib/ \
@@ -151,7 +151,7 @@ LIBCONSOLE_OBJS = \
 LIBLOAD_OBJS = \
 	syslinux/addlist.o syslinux/freelist.o syslinux/memmap.o	\
 	syslinux/movebits.o syslinux/shuffle.o syslinux/shuffle_pm.o	\
-	syslinux/shuffle_rm.o syslinux/biosboot.o syslinux/zonelist.o	\
+	syslinux/shuffle_rm.o syslinux/zonelist.o			\
 	syslinux/dump_mmap.o syslinux/dump_movelist.o			\
 	\
 	syslinux/run_default.o syslinux/run_command.o			\

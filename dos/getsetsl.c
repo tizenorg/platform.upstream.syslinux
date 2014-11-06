@@ -5,8 +5,6 @@
 
 #define _XOPEN_SOURCE 500	/* Required on glibc 2.x */
 #define _BSD_SOURCE
-/* glibc 2.20 deprecates _BSD_SOURCE in favour of _DEFAULT_SOURCE */
-#define _DEFAULT_SOURCE 1
 #include <inttypes.h>
 #include <string.h>
 #include <stddef.h>
@@ -123,22 +121,5 @@ void memcpy_from_sl(void *dst, const void *src, size_t len)
 		 "popw %%ds"
 		 : "+D" (dst), "+S" (off), "+c" (len)
 		 : "r" (seg)
-		 : "memory");
-}
-
-void memset_sl(void *dst, int c, size_t len)
-{
-    uint16_t seg;
-    uint16_t off;
-
-    seg = ds() + ((size_t)dst >> 4);
-    off = (size_t)dst & 15;
-
-    asm volatile("pushw %%es ; "
-		 "movw %3,%%es ; "
-		 "rep ; stosb ; "
-		 "popw %%es"
-		 : "+D" (off), "+c" (len)
-		 : "a" (c), "r" (seg)
 		 : "memory");
 }

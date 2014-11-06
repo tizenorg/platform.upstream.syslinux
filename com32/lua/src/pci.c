@@ -160,7 +160,7 @@ static int pci_getidlist(lua_State *L)
   return(1);
 }
 
-static const luaL_Reg pcilib[] = {
+static const luaL_reg pcilib[] = {
   {"getinfo", pci_getinfo},
   {"getidlist", pci_getidlist},
   {NULL, NULL}
@@ -169,7 +169,7 @@ static const luaL_Reg pcilib[] = {
 /* This defines a function that opens up your library. */
 
 LUALIB_API int luaopen_pci (lua_State *L) {
-  luaL_newlib(L, pcilib);
+  luaL_openlib(L, LUA_PCILIBNAME, pcilib, 0);
   return 1;
 }
 

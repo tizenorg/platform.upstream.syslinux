@@ -1,7 +1,3 @@
-/*
- * Copyright 2012-2014 Intel Corporation - All Rights Reserved
- */
-
 #include <syslinux/config.h>
 
 /*

@@ -20,7 +20,7 @@
 #include <string.h>
 #include <com32.h>
 
-int main(int argc __unused, char *argv[] __unused)
+int main()
 {
 	com32sys_t inregs, outregs;
 
@@ -50,7 +50,6 @@ int main(int argc __unused, char *argv[] __unused)
 		return 1;
 	}
 
-	memset(&inregs, 0, sizeof inregs);
 	inregs.eax.l = 0x5301; /* APM Real Mode Interface Connect (01h) */
 	inregs.ebx.l = 0; /* APM BIOS (0000h) */
 	__intcall(0x15, &inregs, &outregs);
@@ -60,7 +59,6 @@ int main(int argc __unused, char *argv[] __unused)
 		return 1;
 	}
 
-	memset(&inregs, 0, sizeof inregs);
 	inregs.eax.l = 0x530e; /* APM Driver Version (0Eh) */
 	inregs.ebx.l = 0; /* APM BIOS (0000h) */
 	inregs.ecx.l = 0x101; /* APM Driver version 1.1 */
@@ -76,7 +74,6 @@ int main(int argc __unused, char *argv[] __unused)
 		return 1;
 	}
 
-	memset(&inregs, 0, sizeof inregs);
 	inregs.eax.l = 0x5307; /* Set Power State (07h) */
 	inregs.ebx.l = 1; /* All devices power managed by the APM BIOS */
 	inregs.ecx.l = 3; /* Power state off */

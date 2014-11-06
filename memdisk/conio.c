@@ -23,7 +23,6 @@
 int putchar(int ch)
 {
     com32sys_t regs;
-    memset(&regs, 0, sizeof regs);
 
     if (ch == '\n') {
 	/* \n -> \r\n */

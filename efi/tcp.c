@@ -1,7 +1,3 @@
-/*
- * Copyright 2013-2014 Intel Corporation - All Rights Reserved
- */
-
 #include "efi.h"
 #include "net.h"
 #include "fs/pxe/pxe.h"
@@ -56,35 +52,19 @@ int core_tcp_connect(struct pxe_pvt_inode *socket, uint32_t ip, uint16_t port)
     EFI_STATUS status;
     EFI_TCP4 *tcp = (EFI_TCP4 *)b->this;
     int rv = -1;
-    int unmapped = 1;
-    jiffies_t start, last, cur;
 
     memset(&tdata, 0, sizeof(tdata));
 
     ap = &tdata.AccessPoint;
-    ap->UseDefaultAddress = TRUE;
+    memcpy(&ap->StationAddress, &IPInfo.myip, sizeof(IPInfo.myip));
+    memcpy(&ap->SubnetMask, &IPInfo.netmask, sizeof(IPInfo.netmask));
     memcpy(&ap->RemoteAddress, &ip, sizeof(ip));
     ap->RemotePort = port;
     ap->ActiveFlag = TRUE; /* Initiate active open */
 
     tdata.TimeToLive = 64;
 
-    last = start = jiffies();
-    while (unmapped){
-	status = uefi_call_wrapper(tcp->Configure, 2, tcp, &tdata);
-	if (status != EFI_NO_MAPPING)
-		unmapped = 0;
-	else {
-	    cur = jiffies();
-	    if ( (cur - last) >= EFI_NOMAP_PRINT_DELAY ) {
-		last = cur;
-		Print(L"core_tcp_connect: stalling on configure with no mapping\n");
-	    } else if ( (cur - start) > EFI_NOMAP_PRINT_DELAY * EFI_NOMAP_PRINT_COUNT) {
-		Print(L"core_tcp_connect: aborting on no mapping\n");
-		unmapped = 0;
-	    }
-	}
-    }
+    status = uefi_call_wrapper(tcp->Configure, 2, tcp, &tdata);
     if (status != EFI_SUCCESS)
 	return -1;
 

@@ -23,7 +23,6 @@
  *
  */
 
-#define _FILE_OFFSET_BITS 64
 #include <err.h>
 #include <time.h>
 #include <ctype.h>
@@ -62,8 +61,6 @@ uint32_t id = 0;                /* MBR: 0 <= id <= 0xFFFFFFFF(4294967296) */
 
 uint8_t hd0 = 0;                /* 0 <= hd0 <= 2 */
 uint8_t partok = 0;             /* 0 <= partok <= 1 */
-
-char mbr_template_path[1024] = {0};   /* Path to MBR template */
 
 uint16_t ve[16];
 uint32_t catoffset = 0;
@@ -225,21 +222,20 @@ usage(void)
 void
 printh(void)
 {
-#define FMT "%-20s %s\n"
+#define FMT "%-18s %s\n"
 
     usage();
 
     printf("\n");
     printf("Options:\n");
-    printf(FMT, "   -h <X>", "Number of geometry heads (default 64)");
-    printf(FMT, "   -s <X>", "Number of geometry sectors (default 32)");
+    printf(FMT, "   -h <X>", "Number of default geometry heads");
+    printf(FMT, "   -s <X>", "Number of default geometry sectors");
     printf(FMT, "   -e --entry", "Specify partition entry number (1-4)");
     printf(FMT, "   -o --offset", "Specify partition offset (default 0)");
     printf(FMT, "   -t --type", "Specify partition type (default 0x17)");
     printf(FMT, "   -i --id", "Specify MBR ID (default random)");
     printf(FMT, "   -u --uefi", "Build EFI bootable image");
     printf(FMT, "   -m --mac", "Add AFP table support");
-    printf(FMT, "   -b --mbr <PATH>", "Load MBR from PATH");
 
     printf("\n");
     printf(FMT, "   --forcehd0", "Assume we are loaded as disk ID 0");
@@ -262,7 +258,7 @@ check_option(int argc, char *argv[])
     char *err = NULL;
     int n = 0, ind = 0;
 
-    const char optstr[] = ":h:s:e:o:t:i:b:umfcp?vV";
+    const char optstr[] = ":h:s:e:o:t:i:fcp?vV";
     struct option lopt[] = \
     {
         { "entry", required_argument, NULL, 'e' },
@@ -275,7 +271,6 @@ check_option(int argc, char *argv[])
         { "partok", no_argument, NULL, 'p'},
 	{ "uefi", no_argument, NULL, 'u'},
 	{ "mac", no_argument, NULL, 'm'},
-        { "mbr", required_argument, NULL, 'b' },
 
         { "help", no_argument, NULL, '?' },
         { "verbose", no_argument, NULL, 'v' },
@@ -350,12 +345,6 @@ check_option(int argc, char *argv[])
 	    if (entry)
 		errx(1, "setting an entry is unsupported with EFI or Mac");
 	    break;
-
-	case 'b':
-            if (strlen(optarg) >= sizeof(mbr_template_path))
-                errx(1, "--mbr : Path too long");
-            strcpy(mbr_template_path, optarg);
-            break;
 
         case 'v':
             mode |= VERBOSE;
@@ -581,24 +570,6 @@ display_catalogue(void)
     printf("de_mbz2: %hu\n", de_mbz2);
 }
 
-
-void
-read_mbr_template(char *path, uint8_t *mbr)
-{
-    FILE *fp;
-    int ret;
-
-    fp = fopen(path, "rb");
-    if (fp == NULL)
-        err(1, "could not open MBR template file `%s'", path);
-    clearerr(fp);
-    ret = fread(mbr, 1, MBRSIZE, fp);
-    if (ferror(fp) || ret != MBRSIZE)
-        err(1, "error while reading MBR template file `%s'", path);
-    fclose(fp);
-}
-
-
 int
 initialise_mbr(uint8_t *mbr)
 {
@@ -608,25 +579,9 @@ initialise_mbr(uint8_t *mbr)
     uint8_t bhead = 0, bsect = 0, bcyle = 0;
     uint8_t ehead = 0, esect = 0, ecyle = 0;
 
-#ifndef ISOHYBRID_C_STANDALONE
     extern unsigned char isohdpfx[][MBRSIZE];
-#endif
 
-    if (mbr_template_path[0]) {
-        read_mbr_template(mbr_template_path, mbr);
-    } else {
-
-#ifdef ISOHYBRID_C_STANDALONE
-
-        err(1, "This is a standalone binary. You must specify --mbr. E.g with /usr/lib/syslinux/isohdpfx.bin");
-
-#else
-
-        memcpy(mbr, &isohdpfx[hd0 + 3 * partok], MBRSIZE);
-
-#endif /* ! ISOHYBRID_C_STANDALONE */
-
-    }
+    memcpy(mbr, &isohdpfx[hd0 + 3 * partok], MBRSIZE);
 
     if (mode & MAC) {
 	memcpy(mbr, afp_header, sizeof(afp_header));
@@ -786,21 +741,6 @@ reverse_uuid(uuid_t uuid)
 	t = p[6]; p[6] = p[7]; p[7] = t;
 }
 
-static uint16_t *
-ascii_to_utf16le(uint16_t *dst, const char *src)
-{
-    uint8_t *p = (uint8_t *)dst;
-    char c;
-
-    do {
-	c = *src++;
-	*p++ = c;
-	*p++ = 0;
-    } while (c);
-
-    return (uint16_t *)p;
-}
-
 void
 initialise_gpt(uint8_t *gpt, uint32_t current, uint32_t alternate, int primary)
 {
@@ -851,8 +791,8 @@ initialise_gpt(uint8_t *gpt, uint32_t current, uint32_t alternate, int primary)
     memcpy(part->partGUID, iso_uuid, sizeof(uuid_t));
     memcpy(part->partTypeGUID, basic_partition, sizeof(uuid_t));
     part->firstLBA = lendian_64(0);
-    part->lastLBA = lendian_64(psize - 1);
-    ascii_to_utf16le(part->name, "ISOHybrid ISO");
+    part->lastLBA = lendian_64(psize);
+    memcpy(part->name, "ISOHybrid ISO", 28);
 
     gpt += sizeof(struct gpt_part_header);
     part++;
@@ -861,7 +801,7 @@ initialise_gpt(uint8_t *gpt, uint32_t current, uint32_t alternate, int primary)
     memcpy(part->partTypeGUID, basic_partition, sizeof(uuid_t));
     part->firstLBA = lendian_64(efi_lba * 4);
     part->lastLBA = lendian_64(part->firstLBA + efi_count - 1);
-    ascii_to_utf16le(part->name, "ISOHybrid");
+    memcpy(part->name, "ISOHybrid", 20);
 
     gpt += sizeof(struct gpt_part_header);
 
@@ -874,7 +814,7 @@ initialise_gpt(uint8_t *gpt, uint32_t current, uint32_t alternate, int primary)
 	memcpy(part->partTypeGUID, hfs_partition, sizeof(uuid_t));
 	part->firstLBA = lendian_64(mac_lba * 4);
 	part->lastLBA = lendian_64(part->firstLBA + mac_count - 1);
-	ascii_to_utf16le(part->name, "ISOHybrid");
+	memcpy(part->name, "ISOHybrid", 20);
 
 	part--;
     }
@@ -896,7 +836,7 @@ initialise_apm(uint8_t *gpt, uint32_t start)
     part->signature = bendian_short(0x504d);
     part->map_count = bendian_int(apm_parts);
     part->start_block = bendian_int(1);
-    part->block_count = bendian_int(4);
+    part->block_count = bendian_int(0x10);
     strcpy(part->name, "Apple");
     strcpy(part->type, "Apple_partition_map");
     part->data_start = bendian_int(0);
@@ -908,11 +848,11 @@ initialise_apm(uint8_t *gpt, uint32_t start)
     part->signature = bendian_short(0x504d);
     part->map_count = bendian_int(3);
     part->start_block = bendian_int(efi_lba);
-    part->block_count = bendian_int(efi_count / 4);
+    part->block_count = bendian_int(efi_count);
     strcpy(part->name, "EFI");
     strcpy(part->type, "Apple_HFS");
     part->data_start = bendian_int(0);
-    part->data_count = bendian_int(efi_count / 4);
+    part->data_count = bendian_int(efi_count);
     part->status = bendian_int(0x33);
 
     part = (struct apple_part_header *)(gpt + 4096);
@@ -922,11 +862,11 @@ initialise_apm(uint8_t *gpt, uint32_t start)
 	part->signature = bendian_short(0x504d);
 	part->map_count = bendian_int(3);
 	part->start_block = bendian_int(mac_lba);
-	part->block_count = bendian_int(mac_count / 4);
+	part->block_count = bendian_int(mac_count);
 	strcpy(part->name, "EFI");
 	strcpy(part->type, "Apple_HFS");
 	part->data_start = bendian_int(0);
-	part->data_count = bendian_int(mac_count / 4);
+	part->data_count = bendian_int(mac_count);
 	part->status = bendian_int(0x33);
     } else {
 	part->signature = bendian_short(0x504d);
@@ -970,13 +910,13 @@ main(int argc, char *argv[])
     if (!(fp = fopen(argv[0], "r+")))
         err(1, "could not open file `%s'", argv[0]);
 
-    if (fseeko(fp, (off_t) (16 << 11), SEEK_SET))
+    if (fseek(fp, (16 << 11), SEEK_SET))
         err(1, "%s: seek error - 0", argv[0]);
 
     if (fread(&descriptor, sizeof(char), sizeof(descriptor), fp) != sizeof(descriptor))
         err(1, "%s: read error - 0", argv[0]);
 
-    if (fseeko(fp, (off_t) 17 * 2048, SEEK_SET))
+    if (fseek(fp, 17 * 2048, SEEK_SET))
         err(1, "%s: seek error - 1", argv[0]);
 
     bufz = buf = calloc(BUFSIZE, sizeof(char));
@@ -989,7 +929,7 @@ main(int argc, char *argv[])
     if (mode & VERBOSE)
         printf("catalogue offset: %d\n", catoffset);
 
-    if (fseeko(fp, ((off_t) catoffset) * 2048, SEEK_SET))
+    if (fseek(fp, catoffset * 2048, SEEK_SET))
         err(1, "%s: seek error - 2", argv[0]);
 
     buf = bufz;
@@ -1039,7 +979,7 @@ main(int argc, char *argv[])
 	}
     }
 
-    if (fseeko(fp, (((off_t) de_lba) * 2048 + 0x40), SEEK_SET))
+    if (fseek(fp, (de_lba * 2048 + 0x40), SEEK_SET))
         err(1, "%s: seek error - 3", argv[0]);
 
     buf = bufz;
@@ -1075,7 +1015,7 @@ main(int argc, char *argv[])
 
     if (!id)
     {
-        if (fseeko(fp, (off_t) 440, SEEK_SET))
+        if (fseek(fp, 440, SEEK_SET))
             err(1, "%s: seek error - 4", argv[0]);
 
 	if (fread(&id, 1, 4, fp) != 4)
@@ -1099,7 +1039,7 @@ main(int argc, char *argv[])
     if (mode & VERBOSE)
         display_mbr(buf, i);
 
-    if (fseeko(fp, (off_t) 0, SEEK_SET))
+    if (fseek(fp, 0, SEEK_SET))
         err(1, "%s: seek error - 5", argv[0]);
 
     if (fwrite(buf, sizeof(char), i, fp) != (size_t)i)
@@ -1138,9 +1078,9 @@ main(int argc, char *argv[])
 	 * Primary GPT starts at sector 1, secondary GPT starts at 1 sector
 	 * before the end of the image
 	 */
-	initialise_gpt(buf, 1, (isostat.st_size + padding - 512) / 512, 1);
+	initialise_gpt(buf, 1, (isostat.st_size + padding - 1024) / 512, 1);
 
-	if (fseeko(fp, (off_t) 512, SEEK_SET))
+	if (fseek(fp, 512, SEEK_SET))
 	    err(1, "%s: seek error - 6", argv[0]);
 
 	if (fwrite(buf, sizeof(char), gpt_size, fp) != (size_t)gpt_size)
@@ -1157,7 +1097,7 @@ main(int argc, char *argv[])
 
 	initialise_apm(buf, APM_OFFSET);
 
-	fseeko(fp, (off_t) APM_OFFSET, SEEK_SET);
+	fseek(fp, APM_OFFSET, SEEK_SET);
 	fwrite(buf, sizeof(char), apm_size, fp);
     }
 
@@ -1176,7 +1116,7 @@ main(int argc, char *argv[])
 
 	buf += orig_gpt_size - sizeof(struct gpt_header);
 
-	initialise_gpt(buf, (isostat.st_size + padding - 512) / 512, 1, 0);
+	initialise_gpt(buf, (isostat.st_size + padding - 1024) / 512, 1, 0);
 
 	/* Shift back far enough to write the 128 GPT entries */
 	buf -= 128 * sizeof(struct gpt_part_header);
@@ -1186,7 +1126,8 @@ main(int argc, char *argv[])
 	 * end of the image
 	 */
 
-	if (fseeko(fp, (isostat.st_size + padding) - orig_gpt_size, SEEK_SET))
+	if (fseek(fp, (isostat.st_size + padding) - orig_gpt_size - 512,
+		  SEEK_SET))
 	    err(1, "%s: seek error - 8", argv[0]);
 
 	if (fwrite(buf, sizeof(char), orig_gpt_size, fp) != orig_gpt_size)

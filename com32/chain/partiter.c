@@ -176,7 +176,7 @@ static int notsane_logical(const struct part_iter *iter)
 	return -1;
     }
 
-    if (!(iter->flags & PIF_STRICT))
+    if (iter->flags & PIF_RELAX)
 	return 0;
 
     end_log = dp[0].start_lba + dp[0].length;
@@ -215,7 +215,7 @@ static int notsane_extended(const struct part_iter *iter)
 	return -1;
     }
 
-    if (!(iter->flags & PIF_STRICT))
+    if (iter->flags & PIF_RELAX)
 	return 0;
 
     end_ebr = dp[1].start_lba + dp[1].length;
@@ -245,13 +245,13 @@ static int notsane_primary(const struct part_iter *iter)
     if (!dp->ostype)
 	return 0;
 
-    if (!(iter->flags & PIF_STRICT))
+    if (iter->flags & PIF_RELAX)
 	return 0;
 
     if (!dp->start_lba ||
 	!dp->length ||
 	!sane(dp->start_lba, dp->length) ||
-	((iter->flags & PIF_STRICTER) && (dp->start_lba + dp->length > iter->di.lbacnt))) {
+	dp->start_lba + dp->length > iter->di.lbacnt) {
 	error("Primary partition (in MBR) with invalid offset and/or length.");
 	return -1;
     }
@@ -268,7 +268,7 @@ static int notsane_gpt(const struct part_iter *iter)
     if (guid_is0(&gp->type))
 	return 0;
 
-    if (!(iter->flags & PIF_STRICT))
+    if (iter->flags & PIF_RELAX)
 	return 0;
 
     if (gp->lba_first < iter->gpt.ufirst ||
@@ -412,16 +412,34 @@ static inline int valid_crc(uint32_t crc, const uint8_t *buf, unsigned int siz)
     return crc == crc32(crc32(0, NULL, 0), buf, siz);
 }
 
-static int valid_crc_hdr(void *buf)
+static int gpt_check_hdr_crc(const struct disk_info * const diskinfo, struct disk_gpt_header **_gh)
 {
-    struct disk_gpt_header *gh = buf;
-    uint32_t crc = gh->chksum;
-    int valid;
+    struct disk_gpt_header *gh = *_gh;
+    uint64_t lba_alt;
+    uint32_t hold_crc32;
 
+    hold_crc32 = gh->chksum;
     gh->chksum = 0;
-    valid = crc == crc32(crc32(0, NULL, 0), buf, gh->hdr_size);
-    gh->chksum = crc;
-    return valid;
+    if (!valid_crc(hold_crc32, (const uint8_t *)gh, gh->hdr_size)) {
+	warn("Primary GPT header checksum invalid.");
+	/* retry with backup */
+	lba_alt = gh->lba_alt;
+	free(gh);
+	if (!(gh = *_gh = disk_read_sectors(diskinfo, lba_alt, 1))) {
+	    error("Couldn't read backup GPT header.");
+	    return -1;
+	}
+	hold_crc32 = gh->chksum;
+	gh->chksum = 0;
+	if (!valid_crc(hold_crc32, (const uint8_t *)gh, gh->hdr_size)) {
+	    error("Secondary GPT header checksum invalid.");
+	    return -1;
+	}
+    }
+    /* restore old checksum */
+    gh->chksum = hold_crc32;
+
+    return 0;
 }
 
 static int pi_next_(struct part_iter *iter)
@@ -528,112 +546,10 @@ void pi_del(struct part_iter **_iter)
     *_iter = NULL;
 }
 
-static void try_gpt_we(const char *str, int sec)
-{
-    if (sec)
-	error(str);
-    else
-	warn(str);
-}
-
-static struct disk_gpt_header *try_gpt_hdr(const struct disk_info *di, int sec)
-{
-    const char *desc = sec ? "backup" : "primary";
-    uint64_t gpt_cur = sec ? di->lbacnt - 1 : 1;
-    struct disk_gpt_header *gpth;
-    char errbuf[64];
-
-    gpth = disk_read_sectors(di, gpt_cur, 1);
-    if (!gpth) {
-	sprintf(errbuf, "Unable to read %s GPT header.", desc);
-	try_gpt_we(errbuf, sec);
-	return NULL;
-    }
-    if(!valid_crc_hdr(gpth)) {
-	sprintf(errbuf, "Invalid checksum of %s GPT header.", desc);
-	try_gpt_we(errbuf, sec);
-	free(gpth);
-	return NULL;
-    }
-    return gpth;
-}
-
-static struct disk_gpt_part_entry *try_gpt_list(const struct disk_info *di, const struct disk_gpt_header *gpth, int alt)
-{
-    int pri = gpth->lba_cur < gpth->lba_alt;
-    const char *desc = alt ? "alternative" : "main";
-    struct disk_gpt_part_entry *gptl;
-    char errbuf[64];
-    uint64_t gpt_lsiz;	    /* size of GPT partition list in bytes */
-    uint64_t gpt_lcnt;	    /* size of GPT partition in sectors */
-    uint64_t gpt_loff;	    /* offset to GPT partition list in sectors */
-
-    gpt_lsiz = (uint64_t)gpth->part_size * gpth->part_count;
-    gpt_lcnt = (gpt_lsiz + di->bps - 1) / di->bps;
-    if (!alt) {
-	/* prefer header value for partition table if not asking for alternative */
-	gpt_loff = gpth->lba_table;
-    } else {
-	/* try to read alternative, we have to calculate its position */
-	if (!pri)
-	    gpt_loff = gpth->lba_alt + 1;
-	else
-	    gpt_loff = gpth->lba_alt - gpt_lcnt;
-    }
-
-    gptl = disk_read_sectors(di, gpt_loff, gpt_lcnt);
-    if (!gptl) {
-	sprintf(errbuf, "Unable to read %s GPT partition list.", desc);
-	try_gpt_we(errbuf, alt);
-	return NULL;
-    }
-    if (!valid_crc(gpth->table_chksum, (const uint8_t *)gptl, gpt_lsiz)) {
-	sprintf(errbuf, "Invalid checksum of %s GPT partition list.", desc);
-	try_gpt_we(errbuf, alt);
-	free(gptl);
-	return NULL;
-    }
-    return gptl;
-}
-
-static int notsane_gpt_hdr(const struct disk_info *di, const struct disk_gpt_header *gpth, int flags)
-{
-    uint64_t gpt_loff;	    /* offset to GPT partition list in sectors */
-    uint64_t gpt_lsiz;	    /* size of GPT partition list in bytes */
-    uint64_t gpt_lcnt;	    /* size of GPT partition in sectors */
-    uint64_t gpt_sec;	    /* secondary gpt header */
-
-    if (!(flags & PIF_STRICT))
-	return 0;
-
-    if (gpth->lba_alt < gpth->lba_cur)
-	gpt_sec = gpth->lba_cur;
-    else
-	gpt_sec = gpth->lba_alt;
-    gpt_loff = gpth->lba_table;
-    gpt_lsiz = (uint64_t)gpth->part_size * gpth->part_count;
-    gpt_lcnt = (gpt_lsiz + di->bps - 1) / di->bps;
-
-    /*
-     * disk_read_sectors allows reading of max 255 sectors, so we use
-     * it as a sanity check base. EFI doesn't specify max (AFAIK).
-     */
-    if (gpt_loff < 2 || !gpt_lsiz || gpt_lcnt > 255u ||
-	    gpth->lba_first_usable > gpth->lba_last_usable ||
-	    !sane(gpt_loff, gpt_lcnt) ||
-	    (gpt_loff + gpt_lcnt > gpth->lba_first_usable && gpt_loff <= gpth->lba_last_usable) ||
-	     gpt_loff + gpt_lcnt > gpt_sec ||
-	    ((flags & PIF_STRICTER) && (gpt_sec >= di->lbacnt)) ||
-	    gpth->part_size < sizeof(struct disk_gpt_part_entry))
-	return -1;
-
-    return 0;
-}
-
 /* pi_begin() - validate and and get proper iterator for a disk described by di */
 struct part_iter *pi_begin(const struct disk_info *di, int flags)
 {
-    int isgpt = 0, ret = -1;
+    int gptprot, ret = -1;
     struct part_iter *iter;
     struct disk_dos_mbr *mbr = NULL;
     struct disk_gpt_header *gpth = NULL;
@@ -641,12 +557,12 @@ struct part_iter *pi_begin(const struct disk_info *di, int flags)
 
     /* Preallocate iterator */
     if (!(iter = pi_alloc()))
-	goto out;
+	goto bail;
 
     /* Read MBR */
     if (!(mbr = disk_read_sectors(di, 0, 1))) {
-	error("Unable to read the first disk sector.");
-	goto out;
+	error("Couldn't read the first disk sector.");
+	goto bail;
     }
 
     /* Check for MBR magic */
@@ -654,56 +570,82 @@ struct part_iter *pi_begin(const struct disk_info *di, int flags)
 	warn("No MBR magic, treating disk as raw.");
 	/* looks like RAW */
 	ret = pi_ctor(iter, di, flags);
-	goto out;
+	goto bail;
     }
 
     /* Check for GPT protective MBR */
+    gptprot = 0;
     for (size_t i = 0; i < 4; i++)
-	isgpt |= (mbr->table[i].ostype == 0xEE);
-    isgpt = isgpt && !(flags & PIF_PREFMBR);
-
-    /* Try to read GPT header */
-    if (isgpt) {
-	gpth = try_gpt_hdr(di, 0);
-	if (!gpth)
-	    /*
-	     * this read might fail if bios reports different disk size (different vm/pc)
-	     * not much we can do here to avoid it
-	     */
-	    gpth = try_gpt_hdr(di, 1);
-	if (!gpth)
-	    goto out;
+	gptprot |= (mbr->table[i].ostype == 0xEE);
+    if (gptprot && !(flags & PIF_PREFMBR)) {
+	if (!(gpth = disk_read_sectors(di, 1, 1))) {
+	    error("Couldn't read potential GPT header.");
+	    goto bail;
+	}
     }
 
     if (gpth && gpth->rev.uint32 == 0x00010000 &&
 	    !memcmp(gpth->sig, disk_gpt_sig_magic, sizeof gpth->sig)) {
 	/* looks like GPT v1.0 */
+	uint64_t gpt_loff;	    /* offset to GPT partition list in sectors */
+	uint64_t gpt_lsiz;	    /* size of GPT partition list in bytes */
+	uint64_t gpt_lcnt;	    /* size of GPT partition in sectors */
 #ifdef DEBUG
 	dprintf("Looks like a GPT v1.0 disk.\n");
 	disk_gpt_header_dump(gpth);
 #endif
-	if (notsane_gpt_hdr(di, gpth, flags)) {
-	    error("GPT header values are corrupted.");
-	    goto out;
+	/* Verify checksum, fallback to backup, then bail if invalid */
+	if (gpt_check_hdr_crc(di, &gpth))
+	    goto bail;
+
+	gpt_loff = gpth->lba_table;
+	gpt_lsiz = (uint64_t)gpth->part_size * gpth->part_count;
+	gpt_lcnt = (gpt_lsiz + di->bps - 1) / di->bps;
+
+	/*
+	 * disk_read_sectors allows reading of max 255 sectors, so we use
+	 * it as a sanity check base. EFI doesn't specify max (AFAIK).
+	 * Apart from that, some extensive sanity checks.
+	 */
+	if (!(flags & PIF_RELAX) && (
+		!gpt_loff || !gpt_lsiz || gpt_lcnt > 255u ||
+		gpth->lba_first_usable > gpth->lba_last_usable ||
+		!sane(gpt_loff, gpt_lcnt) ||
+		gpt_loff + gpt_lcnt > gpth->lba_first_usable ||
+		!sane(gpth->lba_last_usable, gpt_lcnt) ||
+		gpth->lba_last_usable + gpt_lcnt >= gpth->lba_alt ||
+		gpth->lba_alt >= di->lbacnt ||
+		gpth->part_size < sizeof *gptl)) {
+	    error("Invalid GPT header's values.");
+	    goto bail;
 	}
-
-	gptl = try_gpt_list(di, gpth, 0);
-	if (!gptl)
-	    gptl = try_gpt_list(di, gpth, 1);
-	if (!gptl)
-	    goto out;
-
+	if (!(gptl = disk_read_sectors(di, gpt_loff, gpt_lcnt))) {
+	    error("Couldn't read GPT partition list.");
+	    goto bail;
+	}
+	/* Check array checksum(s). */
+	if (!valid_crc(gpth->table_chksum, (const uint8_t *)gptl, (unsigned int)gpt_lsiz)) {
+	    warn("Checksum of the main GPT partition list is invalid, trying backup.");
+	    free(gptl);
+	    /* secondary array directly precedes secondary header */
+	    if (!(gptl = disk_read_sectors(di, gpth->lba_alt - gpt_lcnt, gpt_lcnt))) {
+		error("Couldn't read backup GPT partition list.");
+		goto bail;
+	    }
+	    if (!valid_crc(gpth->table_chksum, (const uint8_t *)gptl, gpt_lsiz)) {
+		error("Checksum of the backup GPT partition list is invalid, giving up.");
+		goto bail;
+	    }
+	}
 	/* looks like GPT */
 	ret = pi_gpt_ctor(iter, di, flags, gpth, gptl);
     } else {
 	/* looks like MBR */
 	ret = pi_dos_ctor(iter, di, flags, mbr);
     }
-out:
-    if (ret < 0) {
+bail:
+    if (ret < 0)
 	free(iter);
-	iter = NULL;
-    }
     free(mbr);
     free(gpth);
     free(gptl);

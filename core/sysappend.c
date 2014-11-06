@@ -14,7 +14,6 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include "core.h"
-#include "fs.h"
 
 /*
  * sysappend.c
@@ -105,22 +104,6 @@ void sysappend_set_uuid(const uint8_t *src)
     *--dst = '\0';
     
     sysappend_strings[SYSAPPEND_SYSUUID] = sysuuid_str;
-}
-
-void sysappend_set_fs_uuid(void)
-{
-    static char fsuuid_str[7+32+7+1] = "FSUUID=";
-    char *uuid;
-
-    uuid = fs_uuid();
-    if (!uuid)
-	return;
-
-    snprintf(fsuuid_str + 7, sizeof(fsuuid_str) - 7, "%s", uuid);
-    fsuuid_str[sizeof(fsuuid_str) - 1] = '\0';
-    free(uuid);
-
-    sysappend_strings[SYSAPPEND_FSUUID] = fsuuid_str;
 }
 
 /*

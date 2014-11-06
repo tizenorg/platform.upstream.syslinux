@@ -45,12 +45,7 @@ __extern long long strtoll(const char *, char **, int);
 __extern unsigned long strtoul(const char *, char **, int);
 __extern unsigned long long strtoull(const char *, char **, int);
 
-static __inline__ char *getenv(const char *name)
-{
-    (void)name;
-    return NULL;
-}
-
+__extern char *getenv(const char *);
 __extern int putenv(const char *);
 __extern int setenv(const char *, const char *, int);
 __extern int unsetenv(const char *);

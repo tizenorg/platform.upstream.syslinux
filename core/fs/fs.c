@@ -5,7 +5,6 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <dprintf.h>
-#include <syslinux/sysappend.h>
 #include "core.h"
 #include "dev.h"
 #include "fs.h"
@@ -375,13 +374,6 @@ __export void close_file(uint16_t handle)
     }
 }
 
-__export char *fs_uuid(void)
-{
-    if (!this_fs || !this_fs->fs_ops || !this_fs->fs_ops->fs_uuid)
-	return NULL;
-    return this_fs->fs_ops->fs_uuid(this_fs);
-}
-
 /*
  * it will do:
  *    initialize the memory management function;
@@ -430,9 +422,8 @@ void fs_init(const struct fs_ops **ops, void *priv)
     }
     this_fs = &fs;
 
-    /* initialize the cache only if it wasn't already initialized
-     * by the fs driver */
-    if (fs.fs_dev && fs.fs_dev->cache_data && !fs.fs_dev->cache_init)
+    /* initialize the cache */
+    if (fs.fs_dev && fs.fs_dev->cache_data)
         cache_init(fs.fs_dev, blk_shift);
 
     /* start out in the root directory */
@@ -449,8 +440,4 @@ void fs_init(const struct fs_ops **ops, void *priv)
 
     SectorShift = fs.sector_shift;
     SectorSize  = fs.sector_size;
-
-    /* Add FSUUID=... string to cmdline */
-    sysappend_set_fs_uuid();
-
 }

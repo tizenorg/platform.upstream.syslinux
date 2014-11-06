@@ -48,9 +48,6 @@ void syslinux_chain_bootstrap(uint16_t flags, const void *bootstrap,
 			      uint32_t bootstrap_len, uint32_t edx,
 			      uint32_t esi, uint16_t ds);
 
-void bios_do_shuffle_and_boot(uint16_t bootflags, uint32_t descaddr,
-			      const void *descbuf, uint32_t dsize);
-
 struct image_types {
     const char *name;
     uint32_t type;

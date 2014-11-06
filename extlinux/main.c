@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------- *
  *
  *   Copyright 1998-2008 H. Peter Anvin - All Rights Reserved
- *   Copyright 2009-2014 Intel Corporation; author: H. Peter Anvin
+ *   Copyright 2009-2012 Intel Corporation; author: H. Peter Anvin
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -14,8 +14,8 @@
 /*
  * extlinux.c
  *
- * Install the syslinux boot block on an fat, ntfs, ext2/3/4, btrfs, xfs,
- * and ufs1/2 filesystem.
+ * Install the syslinux boot block on an fat, ntfs, ext2/3/4, btrfs and xfs
+ * filesystem.
  */
 
 #define  _GNU_SOURCE		/* Enable everything */
@@ -50,8 +50,6 @@
 #include "xfs.h"
 #include "xfs_types.h"
 #include "xfs_sb.h"
-#include "ufs.h"
-#include "ufs_fs.h"
 #include "misc.h"
 #include "version.h"
 #include "syslxint.h"
@@ -78,18 +76,14 @@
 #define XFS_BOOTSECT_OFFSET	(4 << SECTOR_SHIFT)
 #define XFS_SUPPORTED_BLOCKSIZE 4096 /* 4 KiB filesystem block size */
 
-/*
- * btrfs has two discontiguous areas reserved for the boot loader.
- * Use the first one (Boot Area A) for the boot sector and the ADV,
- * and the second one for "ldlinux.sys".
- */
-#define BTRFS_EXTLINUX_OFFSET	BTRFS_BOOT_AREA_B_OFFSET
-#define BTRFS_EXTLINUX_SIZE	BTRFS_BOOT_AREA_B_SIZE
+/* the btrfs partition first 64K blank area is used to store boot sector and
+   boot image, the boot sector is from 0~512, the boot image starts after */
+#define BTRFS_BOOTSECT_AREA	65536
+#define BTRFS_EXTLINUX_OFFSET	SECTOR_SIZE
 #define BTRFS_SUBVOL_MAX 256	/* By btrfs specification */
 static char subvol[BTRFS_SUBVOL_MAX];
 
-#define BTRFS_ADV_OFFSET (BTRFS_BOOT_AREA_A_OFFSET + BTRFS_BOOT_AREA_A_SIZE \
-			  - 2*ADV_SIZE)
+#define BTRFS_ADV_OFFSET (BTRFS_BOOTSECT_AREA - 2 * ADV_SIZE)
 
 /*
  * Get the size of a block device
@@ -314,7 +308,7 @@ static int patch_file_and_bootblock(int fd, const char *dir, int devfd)
     nsect += 2;			/* Two sectors for the ADV */
     sectp = alloca(sizeof(sector_t) * nsect);
     if (fs_type == EXT2 || fs_type == VFAT || fs_type == NTFS ||
-	fs_type == XFS || fs_type == UFS1 || fs_type == UFS2) {
+	fs_type == XFS) {
 	if (sectmap(fd, sectp, nsect)) {
 		perror("bmap");
 		exit(1);
@@ -348,7 +342,6 @@ int install_bootblock(int fd, const char *device)
     struct fat_boot_sector sb3;
     struct ntfs_boot_sector sb4;
     xfs_sb_t sb5;
-    struct ufs_super_block sb6;
     bool ok = false;
 
     if (fs_type == EXT2) {
@@ -402,25 +395,11 @@ int install_bootblock(int fd, const char *device)
 
 	    ok = true;
 	}
-    } else if (fs_type == UFS1 || fs_type == UFS2) {
-	uint32_t sblock_off = (fs_type == UFS1) ?
-	    SBLOCK_UFS1 : SBLOCK_UFS2;
-	uint32_t ufs_smagic = (fs_type == UFS1) ?
-	    UFS1_SUPER_MAGIC : UFS2_SUPER_MAGIC;
-
-	if (xpread(fd, &sb6, sizeof sb6, sblock_off) != sizeof sb6) {
-		perror("reading superblock");
-		return 1;
-	}
-
-	if (sb6.fs_magic == ufs_smagic)
-		ok = true;
     }
 
     if (!ok) {
 	fprintf(stderr,
-		"no fat, ntfs, ext2/3/4, btrfs, xfs "
-		"or ufs1/2 superblock found on %s\n",
+		"no fat, ntfs, ext2/3/4, btrfs or xfs superblock found on %s\n",
 		device);
 	return 1;
     }
@@ -476,7 +455,7 @@ static int rewrite_boot_image(int devfd, const char *path, const char *filename)
     }
 
     /* Write boot image data into LDLINUX.SYS file */
-    ret = xpwrite(fd, (const char _force *)boot_image, boot_image_len, 0);
+    ret = xpwrite(fd, boot_image, boot_image_len, 0);
     if (ret != boot_image_len) {
 	perror("writing bootblock");
 	goto error;
@@ -494,7 +473,7 @@ static int rewrite_boot_image(int devfd, const char *path, const char *filename)
 
     /* Write the patch area again - this relies on the file being overwritten
      * in place! */
-    ret = xpwrite(fd, (const char _force *)boot_image, modbytes, 0);
+    ret = xpwrite(fd, boot_image, modbytes, 0);
     if (ret != modbytes) {
 	fprintf(stderr, "%s: write failure on %s\n", program, filename);
 	goto error;
@@ -573,8 +552,7 @@ int ext2_fat_install_file(const char *path, int devfd, struct stat *rst)
 	goto bail;
     }
 
-    r3 = xpwrite(fd, (const char _force *)syslinux_ldlinuxc32,
-		 syslinux_ldlinuxc32_len, 0);
+    r3 = xpwrite(fd, syslinux_ldlinuxc32, syslinux_ldlinuxc32_len, 0);
     if (r3 != syslinux_ldlinuxc32_len) {
 	fprintf(stderr, "%s: write failure on %s\n", program, c32file);
 	goto bail;
@@ -606,8 +584,7 @@ int btrfs_install_file(const char *path, int devfd, struct stat *rst)
     int fd, rv;
 
     patch_file_and_bootblock(-1, path, devfd);
-    if (xpwrite(devfd, (const char _force *)boot_image,
-		boot_image_len, BTRFS_EXTLINUX_OFFSET)
+    if (xpwrite(devfd, boot_image, boot_image_len, BTRFS_EXTLINUX_OFFSET)
 		!= boot_image_len) {
 	perror("writing bootblock");
 	return 1;
@@ -644,8 +621,7 @@ int btrfs_install_file(const char *path, int devfd, struct stat *rst)
 	return 1;
     }
 
-    rv = xpwrite(fd, (const char _force *)syslinux_ldlinuxc32,
-		 syslinux_ldlinuxc32_len, 0);
+    rv = xpwrite(fd, syslinux_ldlinuxc32, syslinux_ldlinuxc32_len, 0);
     if (rv != (int)syslinux_ldlinuxc32_len) {
 	fprintf(stderr, "%s: write failure on %s\n", program, file);
 	rv = 1;
@@ -723,8 +699,7 @@ static int xfs_install_file(const char *path, int devfd, struct stat *rst)
 	goto bail;
     }
 
-    retval = xpwrite(fd, (const char _force *)syslinux_ldlinuxc32,
-		     syslinux_ldlinuxc32_len, 0);
+    retval = xpwrite(fd, syslinux_ldlinuxc32, syslinux_ldlinuxc32_len, 0);
     if (retval != (int)syslinux_ldlinuxc32_len) {
 	fprintf(stderr, "%s: write failure on %s\n", program, file);
 	goto bail;
@@ -980,8 +955,7 @@ static char * get_default_subvol(char * rootdir, char * subvol)
 
 static int install_file(const char *path, int devfd, struct stat *rst)
 {
-    if (fs_type == EXT2 || fs_type == VFAT || fs_type == NTFS
-	|| fs_type == UFS1 || fs_type == UFS2)
+    if (fs_type == EXT2 || fs_type == VFAT || fs_type == NTFS)
 	return ext2_fat_install_file(path, devfd, rst);
     else if (fs_type == BTRFS)
 	return btrfs_install_file(path, devfd, rst);
@@ -1009,7 +983,7 @@ static int validate_device(const char *path, int devfd)
     struct statfs sfs;
     int pfd;
     int rv = -1;
-
+    
     pfd = open(path, O_RDONLY|O_DIRECTORY);
     if (pfd < 0)
 	goto err;
@@ -1089,16 +1063,6 @@ static const char *find_device(const char *mtab_file, dev_t dev)
 		done = true;
 		break;
 	    }
-
-	    break;
-	case UFS1:
-	case UFS2:
-	    if (!strcmp(mnt->mnt_type, "ufs") && !stat(mnt->mnt_fsname, &dst) &&
-		dst.st_rdev == dev) {
-		done = true;
-	    }
-
-	    break;
 	case NONE:
 	    break;
 	}
@@ -1223,7 +1187,7 @@ static int validate_device_btrfs(int pfd, int dfd)
 	return -1;
 
     return 0;			/* It's good! */
-}
+}    
 
 static const char *find_device_btrfs(const char *path)
 {
@@ -1312,7 +1276,7 @@ static const char *get_devname(const char *path)
 	    fprintf(stderr, "%s: cannot create device %s\n", program, devname);
 	    return devname;
 	}
-
+	
 	atexit(device_cleanup);	/* unlink the device node on exit */
 	devname = devname_buf;
     }
@@ -1366,15 +1330,10 @@ static int open_device(const char *path, struct stat *st, const char **_devname)
 	fs_type = NTFS;
     else if (sfs.f_type == XFS_SUPER_MAGIC)
 	fs_type = XFS;
-    else if (sfs.f_type == UFS1_SUPER_MAGIC)
-	fs_type = UFS1;
-    else if (sfs.f_type == UFS2_SUPER_MAGIC)
-	fs_type = UFS2;
 
     if (!fs_type) {
 	fprintf(stderr,
-		"%s: not a fat, ntfs, ext2/3/4, btrfs, xfs or"
-		"ufs1/2 filesystem: %s\n",
+		"%s: not a fat, ntfs, ext2/3/4, btrfs or xfs filesystem: %s\n",
 		program, path);
 	return -1;
     }

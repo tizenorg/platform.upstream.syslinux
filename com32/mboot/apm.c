@@ -50,7 +50,6 @@ void mboot_apm(void)
 	return;			/* 32 bits not supported */
 
     /* Disconnect first, just in case */
-    memset(&ireg, 0, sizeof ireg);
     ireg.eax.b[0] = 0x04;
     __intcall(0x15, &ireg, &oreg);
 
@@ -69,7 +68,6 @@ void mboot_apm(void)
     /* Redo the installation check as the 32-bit connect;
        some BIOSes return different flags this way... */
 
-    memset(&ireg, 0, sizeof ireg);
     ireg.eax.b[0] = 0x00;
     __intcall(0x15, &ireg, &oreg);
 

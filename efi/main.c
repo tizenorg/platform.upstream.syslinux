@@ -1,7 +1,3 @@
-/*
- * Copyright 2011-2014 Intel Corporation - All Rights Reserved
- */
-
 #include <codepage.h>
 #include <core.h>
 #include <fs.h>
@@ -14,12 +10,11 @@
 
 #include "efi.h"
 #include "fio.h"
-#include "version.h"
 
 __export uint16_t PXERetry;
-__export char copyright_str[] = "Copyright (C) 2011-" YEAR_STR "\n";
+__export char copyright_str[] = "Copyright (C) 2011\n";
 uint8_t SerialNotice = 1;
-__export char syslinux_banner[] = "Syslinux " VERSION_STR " (EFI; " DATE_STR ")\n";
+__export char syslinux_banner[] = "Syslinux 5.x (EFI)\n";
 char CurrentDirName[CURRENTDIR_MAX];
 struct com32_sys_args __com32;
 
@@ -117,6 +112,10 @@ void kaboom(void)
 {
 }
 
+void comboot_cleanup_api(void)
+{
+}
+
 void printf_init(void)
 {
 }
@@ -141,8 +140,8 @@ void __cdecl core_farcall(uint32_t c, const com32sys_t *a, com32sys_t *b)
 }
 
 __export struct firmware *firmware = NULL;
-__export void *__syslinux_adv_ptr;
-__export size_t __syslinux_adv_size;
+void *__syslinux_adv_ptr;
+size_t __syslinux_adv_size;
 char core_xfer_buf[65536];
 struct iso_boot_info {
 	uint32_t pvd;               /* LBA of primary volume descriptor */
@@ -162,6 +161,7 @@ void pxenv(void)
 uint16_t BIOS_fbm = 1;
 far_ptr_t InitStack;
 far_ptr_t PXEEntry;
+__export unsigned int __bcopyxx_len = 0;
 
 void gpxe_unload(void)
 {
@@ -686,8 +686,10 @@ EFI_STATUS emalloc(UINTN size, UINTN align, EFI_PHYSICAL_ADDRESS *addr)
 		/* Low-memory is super-precious! */
 		if (end <= 1 << 20)
 			continue;
-		if (start < 1 << 20)
+		if (start < 1 << 20) {
+			size -= (1 << 20) - start;
 			start = (1 << 20);
+		}
 
 		aligned = (start + align -1) & ~(align -1);
 

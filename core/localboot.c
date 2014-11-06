@@ -39,7 +39,6 @@ __export void local_boot(int16_t ax)
 	com32sys_t ireg, oreg;
 	int i;
 
-        memset(&ireg, 0, sizeof(ireg));
 	syslinux_force_text_mode();
 
 	writestr(LOCALBOOT_MSG);
@@ -58,12 +57,10 @@ __export void local_boot(int16_t ax)
 	 * Load boot sector from the specified BIOS device and jump to
 	 * it.
 	 */
-	memset(&ireg, 0, sizeof ireg);
 	ireg.edx.b[0] = ax & 0xff;
 	ireg.eax.w[0] = 0;	/* Reset drive */
 	__intcall(0x13, &ireg, NULL);
 
-	memset(&ireg, 0, sizeof(ireg));
 	ireg.eax.w[0] = 0x0201;	/* Read one sector */
 	ireg.ecx.w[0] = 0x0001;	/* C/H/S = 0/0/1 (first sector) */
 	ireg.ebx.w[0] = OFFS(trackbuf);

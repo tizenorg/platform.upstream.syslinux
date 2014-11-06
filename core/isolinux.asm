@@ -420,7 +420,7 @@ MaxLMA		equ 384*1024		; Reasonable limit (384K)
 		call getlinsec
 		pop eax
 		pop cx
-		movzx edx,cx
+		mov dx,cx
 		pop bp
 		pop bx
 
@@ -1056,8 +1056,8 @@ startup_msg:	db 'Starting up, DL = ', 0
 spec_ok_msg:	db 'Loaded spec packet OK, drive = ', 0
 secsize_msg:	db 'Sector size ', 0
 offset_msg:	db 'Main image LBA = ', 0
-verify_msg:	db 'Image csum verified.', CR, LF, 0
-allread_msg	db 'Image read, jumping to main code...', CR, LF, 0
+verify_msg:	db 'Image checksum verified.', CR, LF, 0
+allread_msg	db 'Main image read, jumping to main code...', CR, LF, 0
 %endif
 noinfotable_msg	db 'No boot info table, assuming single session disk...', CR, LF, 0
 noinfoinspec_msg db 'Spec packet missing LBA information, trying to wing it...', CR, LF, 0
@@ -1205,13 +1205,23 @@ KernelName	resb FILENAME_MAX	; Mangled name for kernel
 
 		section .text16
 ;
-; COM32 vestigial data structure
+; COMBOOT-loading code
 ;
+%include "comboot.inc"
 %include "com32.inc"
 
 ;
-; Common local boot code
+; Boot sector loading code
 ;
+
+;
+; Abort loading code
+;
+
+;
+; Hardware cleanup common code
+;
+
 %include "localboot.inc"
 
 ; -----------------------------------------------------------------------------
@@ -1226,7 +1236,3 @@ KernelName	resb FILENAME_MAX	; Mangled name for kernel
 
 		section .data16
 err_disk_image	db 'Cannot load disk image (invalid file)?', CR, LF, 0
-
-		section .bss16
-		global OrigFDCTabPtr
-OrigFDCTabPtr	resd 1			; Keep bios_cleanup_hardware() honest

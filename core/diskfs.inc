@@ -83,13 +83,23 @@ KernelName	resb FILENAME_MAX	; Mangled name for kernel
 
 		section .text16
 ;
-; COM32 vestigial data structure
+; COMBOOT-loading code
 ;
+%include "comboot.inc"
 %include "com32.inc"
 
 ;
-; Common local boot code
+; Boot sector loading code
 ;
+
+;
+; Abort loading code
+;
+
+;
+; Hardware cleanup common code
+;
+
 %include "localboot.inc"
 
 ;

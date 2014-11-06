@@ -35,7 +35,6 @@
 #define _CONSOLE_H
 
 #include <klibc/extern.h>
-#include <inttypes.h>
 #include <dev.h>
 
 __extern int openconsole(const struct input_dev *, const struct output_dev *);

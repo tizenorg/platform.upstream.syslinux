@@ -121,7 +121,7 @@ static size_t http_do_bake_cookies(char *q)
     return n;
 }
 
-__export void http_bake_cookies(void)
+void http_bake_cookies(void)
 {
     if (cookie_buf)
 	free(cookie_buf);

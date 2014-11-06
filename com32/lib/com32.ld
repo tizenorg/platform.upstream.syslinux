@@ -12,8 +12,8 @@ SECTIONS
 {
   /* Read-only sections, merged into text segment: */
   . = 0;
-  HIDDEN (__executable_start = .);
-  HIDDEN (_stext = .);
+  PROVIDE (__executable_start = .);
+  PROVIDE (_stext = .);
 
   .init           :
   {
@@ -29,12 +29,12 @@ SECTIONS
   {
     KEEP (*(.fini))
   } =0x90909090
-  HIDDEN (_etext = .);
+  PROVIDE (_etext = .);
 
-  HIDDEN( __rodata_start = .);
+  __rodata_start = .;
   .rodata         : { *(.rodata .rodata.* .gnu.linkonce.r.*) }
   .rodata1        : { *(.rodata1) }
-  HIDDEN(__rodata_end = .);
+  __rodata_end = .;
 
   /*
    * The difference betwee .ctors/.dtors and .init_array/.fini_array
@@ -43,24 +43,24 @@ SECTIONS
    */
   . = ALIGN(4);
   .ctors          : {
-    HIDDEN(__ctors_start = .);
+    PROVIDE (__ctors_start = .);
     KEEP (*(SORT(.preinit_array*)))
     KEEP (*(SORT(.init_array*)))
     KEEP (*(SORT(.ctors*)))
-    HIDDEN(__ctors_end = .);
+    PROVIDE (__ctors_end = .);
   }
   .dtors          : {
-    HIDDEN(__dtors_start = .);
+    PROVIDE (__dtors_start = .);
     KEEP (*(SORT(.fini_array*)))
     KEEP (*(SORT(.dtors*)))
-    HIDDEN(__dtors_end = .);
+    PROVIDE (__dtors_end = .);
   }
 
   .got            : {
-    HIDDEN(__got_start = .);
+    PROVIDE (__got_start = .);
     KEEP (*(.got.plt))
     KEEP (*(.got))
-    HIDDEN(__got_end = .);
+    PROVIDE (__got_end = .);
   }
 
   /* Adjust the address for the data segment.  Avoid mixing code and
@@ -69,15 +69,15 @@ SECTIONS
 
   .data           :
   {
-    HIDDEN(_sdata = .);
+    _sdata = .;
     KEEP(*(.data .data.* .gnu.linkonce.d.*))
     SORT(CONSTRUCTORS)
     *(.data1)
     . = ALIGN(4);
-    HIDDEN(_edata = .);
+    _edata = .;
   }
 
-  HIDDEN(__bss_start = .);
+  __bss_start = .;
   .bss            :
   {
    *(.dynbss)
@@ -89,7 +89,7 @@ SECTIONS
    . = ALIGN(4);
   }
   . = ALIGN(4);
-  HIDDEN(_end = .);
+  _end = .;
 
   /* Stabs debugging sections.  */
   .stab          0 : { *(.stab) }

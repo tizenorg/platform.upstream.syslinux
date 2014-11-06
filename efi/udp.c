@@ -1,7 +1,3 @@
-/*
- * Copyright 2013-2014 Intel Corporation - All Rights Reserved
- */
-
 #include <string.h>
 #include <minmax.h>
 #include "efi.h"
@@ -17,42 +13,6 @@ extern EFI_GUID Udp4ServiceBindingProtocol, Udp4Protocol;
  * number.
  */
 static struct efi_binding *udp_reader;
-
-/** 
- * Try to configure this UDP socket
- *
- * @param:udp, the EFI_UDP4 socket to configure
- * @param:udata, the EFI_UDP4_CONFIG_DATA to use
- * @param:f, the name of the function as a wide string.
- *
- * @out: status as EFI_STATUS
- */
-
-EFI_STATUS core_udp_configure(EFI_UDP4 *udp, EFI_UDP4_CONFIG_DATA *udata,
-	short unsigned int *f)
-{
-    EFI_STATUS status;
-    int unmapped = 1;
-    jiffies_t start, last, cur;
-
-    last = start = jiffies();
-    while (unmapped){
-	status = uefi_call_wrapper(udp->Configure, 2, udp, udata);
-	if (status != EFI_NO_MAPPING)
-		unmapped = 0;
-	else {
-	    cur = jiffies();
-	    if ( (cur - last) >= EFI_NOMAP_PRINT_DELAY ) {
-		last = cur;
-		Print(L"%s: stalling on configure with no mapping\n", f);
-	    } else if ( (cur - start) > EFI_NOMAP_PRINT_DELAY * EFI_NOMAP_PRINT_COUNT) {
-		Print(L"%s: aborting on no mapping\n", f);
-		unmapped = 0;
-	    }
-	}
-    }
-    return status;
-}
 
 /**
  * Open a socket
@@ -81,24 +41,14 @@ int core_udp_open(struct pxe_pvt_inode *socket)
     udp = (EFI_UDP4 *)udp_reader->this;
 
     memset(&udata, 0, sizeof(udata));
+    udata.AcceptPromiscuous = TRUE;
+    udata.AcceptAnyPort = TRUE;
 
-    status = core_udp_configure(udp, &udata, L"core_udp_open");
+    status = uefi_call_wrapper(udp->Configure, 2, udp, &udata);
     if (status != EFI_SUCCESS)
 	goto bail;
 
     socket->net.efi.binding = b;
-
-    /*
-     * Save the random local port number that the UDPv4 Protocol
-     * Driver picked for us. The TFTP protocol uses the local port
-     * number as the TID.
-     */
-    status = uefi_call_wrapper(udp->GetModeData, 5, udp,
-			       &udata, NULL, NULL, NULL);
-    if (status != EFI_SUCCESS)
-	Print(L"Failed to get UDP mode data: %d\n", status);
-    else
-	socket->net.efi.localport = udata.StationPort;
 
     return 0;
 
@@ -150,16 +100,32 @@ void core_udp_connect(struct pxe_pvt_inode *socket, uint32_t ip,
     /* Re-use the existing local port number */
     udata.StationPort = socket->net.efi.localport;
 
-    udata.UseDefaultAddress = TRUE;
+    memcpy(&udata.StationAddress, &IPInfo.myip, sizeof(IPInfo.myip));
+    memcpy(&udata.SubnetMask, &IPInfo.netmask, sizeof(IPInfo.netmask));
     memcpy(&udata.RemoteAddress, &ip, sizeof(ip));
     udata.RemotePort = port;
     udata.AcceptPromiscuous = TRUE;
     udata.TimeToLive = 64;
 
-    status = core_udp_configure(udp, &udata, L"core_udp_connect");
+    status = uefi_call_wrapper(udp->Configure, 2, udp, &udata);
     if (status != EFI_SUCCESS) {
 	Print(L"Failed to configure UDP: %d\n", status);
 	return;
+    }
+
+    /*
+     * If this is the first time connecting, save the random local port
+     * number that the UDPv4 Protocol Driver picked for us. The TFTP
+     * protocol uses the local port number as the TID, and it needs to
+     * be consistent across connect()/disconnect() calls.
+     */
+    if (!socket->net.efi.localport) {
+	status = uefi_call_wrapper(udp->GetModeData, 5, udp,
+				   &udata, NULL, NULL, NULL);
+	if (status != EFI_SUCCESS)
+	    Print(L"Failed to get UDP mode data: %d\n", status);
+	else
+	    socket->net.efi.localport = udata.StationPort;
     }
 }
 
@@ -222,7 +188,6 @@ int core_udp_recv(struct pxe_pvt_inode *socket, void *buf, uint16_t *buf_len,
 
     b = udp_reader;
     udp = (EFI_UDP4 *)b->this;
-    memset(&token, 0, sizeof(token));
 
     status = efi_setup_event(&token.Event, (EFI_EVENT_NOTIFY)udp4_cb,
 			     &token);
@@ -304,6 +269,8 @@ void core_udp_send(struct pxe_pvt_inode *socket, const void *data, size_t len)
     if (status != EFI_SUCCESS)
 	goto bail;
 
+    txdata->UdpSessionData = NULL;
+    txdata->GatewayAddress = NULL;
     txdata->DataLength = len;
     txdata->FragmentCount = 1;
     frag = &txdata->FragmentTable[0];
@@ -369,16 +336,14 @@ void core_udp_sendto(struct pxe_pvt_inode *socket, const void *data,
 
     memset(&udata, 0, sizeof(udata));
 
-    /* Re-use the existing local port number */
-    udata.StationPort = socket->net.efi.localport;
-
-    udata.UseDefaultAddress = TRUE;
+    memcpy(&udata.StationAddress, &IPInfo.myip, sizeof(IPInfo.myip));
+    memcpy(&udata.SubnetMask, &IPInfo.netmask, sizeof(IPInfo.netmask));
     memcpy(&udata.RemoteAddress, &ip, sizeof(ip));
     udata.RemotePort = port;
     udata.AcceptPromiscuous = TRUE;
     udata.TimeToLive = 64;
 
-    status = core_udp_configure(udp, &udata, L"core_udp_sendto");
+    status = uefi_call_wrapper(udp->Configure, 2, udp, &udata);
     if (status != EFI_SUCCESS)
 	goto bail;
 
@@ -387,6 +352,8 @@ void core_udp_sendto(struct pxe_pvt_inode *socket, const void *data,
     if (status != EFI_SUCCESS)
 	goto bail;
 
+    txdata->UdpSessionData = NULL;
+    txdata->GatewayAddress = NULL;
     txdata->DataLength = len;
     txdata->FragmentCount = 1;
     frag = &txdata->FragmentTable[0];

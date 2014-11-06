@@ -695,5 +695,4 @@ const struct fs_ops pxe_fs_ops = {
     .chdir_start   = pxe_chdir_start,
     .open_config   = pxe_open_config,
     .readdir	   = pxe_readdir,
-    .fs_uuid       = NULL,
 };

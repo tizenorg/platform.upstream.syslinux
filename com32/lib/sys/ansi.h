@@ -7,7 +7,6 @@
 
 #include <inttypes.h>
 #include <stdbool.h>
-#include "vesa/video.h"
 
 #define ANSI_MAX_PARMS	16
 
@@ -30,7 +29,7 @@ struct term_state {
     bool pvt;			/* Private code? */
     struct curxy xy;
     struct curxy saved_xy;
-    attr_t cindex;		/* SOH color index */
+    uint8_t cindex;		/* SOH color index */
     uint8_t fg;
     uint8_t bg;
     uint8_t intensity;

@@ -42,11 +42,11 @@
 
 /* status */
 
-enum {PI_ERRLOAD = -31, PI_INSANE, PI_OK = 0, PI_DONE};
+enum {PI_OK, PI_DONE, PI_INSANE, PI_ERRLOAD};
 
 /* flags */
 
-enum {PIF_STEPALL = 1, PIF_PREFMBR = 2, PIF_STRICT = 4, PIF_STRICTER = 8};
+enum {PIF_STEPALL = 1, PIF_RELAX = 2, PIF_PREFMBR = 4};
 
 struct itertype;
 struct part_iter;
@@ -102,6 +102,11 @@ extern const struct itertype * const typeraw;
 
 struct part_iter *pi_begin(const struct disk_info *, int flags);
 void pi_del(struct part_iter **);
+
+static inline int pi_errored(struct part_iter *iter)
+{
+    return iter->status > PI_DONE;
+}
 
 /* inline virtuals */
 static inline int pi_next(struct part_iter *iter)

@@ -121,32 +121,29 @@ int rename(const char *oldname, const char *newname)
     return 0;
 }
 
-ssize_t write_file_sl(int fd, const unsigned char _slimg *buf,
-		      const unsigned int len)
+ssize_t write_file_seg(int fd, unsigned char *buf, const unsigned int len)
 {
-    uint32_t filepos = 0;
+    uint16_t seg = ((size_t)buf >> 4) + ds();
+    uint32_t offset = 0;
     uint16_t rv;
     uint8_t err;
 
-    while (filepos < len) {
-	uint16_t seg = ((size_t)buf >> 4) + ds();
-	uint16_t offset = (size_t)buf & 15;
-	uint32_t chunk = len - filepos;
-	if (chunk > 32768 - offset)
-	    chunk = 32768 - offset;
+    while (offset < len) {
+	uint32_t chunk = len - offset;
+	if (chunk > 32768)
+	    chunk = 32768;
 	asm volatile ("pushw %%ds ; "
 		      "movw %6,%%ds ; "
 		      "int $0x21 ; "
 		      "popw %%ds ; " "setc %0":"=bcdm" (err), "=a"(rv)
-		      :"a"(0x4000), "b"(fd), "c"(chunk), "d" (offset),
-		       "SD" (seg));
+		      :"a"(0x4000), "b"(fd), "c"(chunk), "d" (offset & 15),
+		      "SD" ((uint16_t)(seg + (offset >> 4))));
 	if (err || rv == 0)
 	    die("file write error");
-	filepos += rv;
-	buf += rv;
+	offset += rv;
     }
 
-    return filepos;
+    return offset;
 }
 
 ssize_t write_file(int fd, const void *buf, size_t count)
@@ -170,6 +167,15 @@ ssize_t write_file(int fd, const void *buf, size_t count)
     return done;
 }
 
+static inline __attribute__ ((const))
+uint16_t data_segment(void)
+{
+    uint16_t ds;
+
+    asm("movw %%ds,%0" : "=rm"(ds));
+    return ds;
+}
+
 void write_device(int drive, const void *buf, size_t nsecs, unsigned int sector)
 {
     uint16_t errnum = 0x0001;
@@ -180,7 +186,7 @@ void write_device(int drive, const void *buf, size_t nsecs, unsigned int sector)
     dio.startsector = sector;
     dio.sectors = nsecs;
     dio.bufoffs = (uintptr_t) buf;
-    dio.bufseg = ds();
+    dio.bufseg = data_segment();
 
     if (dos_version >= 0x070a) {
 	/* Try FAT32-aware system call first */
@@ -213,7 +219,7 @@ void read_device(int drive, void *buf, size_t nsecs, unsigned int sector)
     dio.startsector = sector;
     dio.sectors = nsecs;
     dio.bufoffs = (uintptr_t) buf;
-    dio.bufseg = ds();
+    dio.bufseg = data_segment();
 
     if (dos_version >= 0x070a) {
 	/* Try FAT32-aware system call first */
@@ -313,7 +319,7 @@ void write_mbr(int drive, const void *buf)
     dprintf("write_mbr(%d,%p)", drive, buf);
 
     mbr.bufferoffset = (uintptr_t) buf;
-    mbr.bufferseg = ds();
+    mbr.bufferseg = data_segment();
 
     rv = 0x440d;
     asm volatile ("int $0x21 ; setc %0" : "=bcdm" (err), "+a"(rv)
@@ -342,7 +348,7 @@ void read_mbr(int drive, const void *buf)
     dprintf("read_mbr(%d,%p)", drive, buf);
 
     mbr.bufferoffset = (uintptr_t) buf;
-    mbr.bufferseg = ds();
+    mbr.bufferseg = data_segment();
 
     rv = 0x440d;
     asm volatile ("int $0x21 ; setc %0":"=abcdm" (err), "+a"(rv)
@@ -679,14 +685,14 @@ int main(int argc, char *argv[])
 
     set_attributes(ldlinux_name, 0);
     fd = creat(ldlinux_name, 0);	/* SYSTEM HIDDEN READONLY */
-    write_file_sl(fd, syslinux_ldlinux, syslinux_ldlinux_len);
+    write_file_seg(fd, syslinux_ldlinux, syslinux_ldlinux_len);
     write_file(fd, syslinux_adv, 2 * ADV_SIZE);
     close(fd);
     set_attributes(ldlinux_name, 0x07);	/* SYSTEM HIDDEN READONLY */
 
     set_attributes(ldlinuxc32_name, 0);
     fd = creat(ldlinuxc32_name, 0);		/* SYSTEM HIDDEN READONLY */
-    write_file_sl(fd, syslinux_ldlinuxc32, syslinux_ldlinuxc32_len);
+    write_file_seg(fd, syslinux_ldlinuxc32, syslinux_ldlinuxc32_len);
     close(fd);
     set_attributes(ldlinuxc32_name, 0x07);	/* SYSTEM HIDDEN READONLY */
 

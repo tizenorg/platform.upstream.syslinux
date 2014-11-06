@@ -12,7 +12,6 @@
 #include <sys/vesa/video.h>
 #include <sys/vesa/debug.h>
 #include <minmax.h>
-#include "core.h"
 
 __export struct firmware *firmware = NULL;
 
@@ -53,7 +52,6 @@ static void bios_get_cursor(uint8_t *x, uint8_t *y)
 static void bios_erase(int x0, int y0, int x1, int y1, uint8_t attribute)
 {
     static com32sys_t ireg;
-    memset(&ireg, 0, sizeof(ireg));
 
     ireg.eax.w[0] = 0x0600;	/* Clear window */
     ireg.ebx.b[1] = attribute;
@@ -69,8 +67,6 @@ static void bios_showcursor(const struct term_state *st)
     static com32sys_t ireg;
     uint16_t cursor = st->cursor ? cursor_type : 0x2020;
 
-    memset(&ireg, 0, sizeof(ireg));
-
     ireg.eax.b[1] = 0x01;
     ireg.ecx.w[0] = cursor;
     __intcall(0x10, &ireg, NULL);
@@ -81,8 +77,6 @@ static void bios_set_cursor(int x, int y, bool visible)
     const int page = BIOS_PAGE;
     struct curxy xy = BIOS_CURXY[page];
     static com32sys_t ireg;
-
-    memset(&ireg, 0, sizeof(ireg));
 
     (void)visible;
 
@@ -99,8 +93,6 @@ static void bios_write_char(uint8_t ch, uint8_t attribute)
 {
     static com32sys_t ireg;
 
-    memset(&ireg, 0, sizeof(ireg));
-
     ireg.eax.b[1] = 0x09;
     ireg.eax.b[0] = ch;
     ireg.ebx.b[1] = BIOS_PAGE;
@@ -113,8 +105,6 @@ static void bios_scroll_up(uint8_t cols, uint8_t rows, uint8_t attribute)
 {
     static com32sys_t ireg;
 
-    memset(&ireg, 0, sizeof(ireg));
-
     ireg.eax.w[0] = 0x0601;
     ireg.ebx.b[1] = attribute;
     ireg.ecx.w[0] = 0;
@@ -126,8 +116,6 @@ static void bios_scroll_up(uint8_t cols, uint8_t rows, uint8_t attribute)
 static void bios_beep(void)
 {
     static com32sys_t ireg;
-
-    memset(&ireg, 0, sizeof(ireg));
 
     ireg.eax.w[0] = 0x0e07;
     ireg.ebx.b[1] = BIOS_PAGE;
@@ -148,12 +136,10 @@ struct output_ops bios_output_ops = {
 
 extern char bios_getchar(char *);
 extern int bios_pollchar(void);
-extern uint8_t bios_shiftflags(void);
 
 struct input_ops bios_input_ops = {
 	.getchar = bios_getchar,
 	.pollchar = bios_pollchar,
-	.shiftflags = bios_shiftflags,
 };
 
 static void bios_get_serial_console_info(uint16_t *iobase, uint16_t *divisor,
@@ -168,20 +154,28 @@ static void bios_get_serial_console_info(uint16_t *iobase, uint16_t *divisor,
 	*flowctl |= (0x80 << 8);
 }
 
+void *__syslinux_adv_ptr;
+size_t __syslinux_adv_size;
+
 void bios_adv_init(void)
 {
     static com32sys_t reg;
 
-    memset(&reg, 0, sizeof(reg));
-    call16(adv_init, &reg, NULL);
+    reg.eax.w[0] = 0x0025;
+    __intcall(0x22, &reg, &reg);
+
+    reg.eax.w[0] = 0x001c;
+    __intcall(0x22, &reg, &reg);
+    __syslinux_adv_ptr = MK_PTR(reg.es, reg.ebx.w[0]);
+    __syslinux_adv_size = reg.ecx.w[0];
 }
 
 int bios_adv_write(void)
 {
     static com32sys_t reg;
 
-    memset(&reg, 0, sizeof(reg));
-    call16(adv_write, &reg, &reg);
+    reg.eax.w[0] = 0x001d;
+    __intcall(0x22, &reg, &reg);
     return (reg.eflags.l & EFLAGS_CF) ? -1 : 0;
 }
 
@@ -268,7 +262,6 @@ static int bios_vesacon_set_mode(struct vesa_info *vesa_info, int *px, int *py,
 
 	debug("Found mode: 0x%04x\r\n", mode);
 
-        memset(&rm, 0, sizeof rm);
 	memset(mi, 0, sizeof *mi);
 	rm.eax.w[0] = 0x4F01;	/* Get SVGA mode information */
 	rm.ecx.w[0] = mode;
@@ -364,7 +357,6 @@ static int bios_vesacon_set_mode(struct vesa_info *vesa_info, int *px, int *py,
     mi = &vesa_info->mi;
     mode = bestmode;
 
-    memset(&rm, 0, sizeof rm);
     /* Now set video mode */
     rm.eax.w[0] = 0x4F02;	/* Set SVGA video mode */
     if (mi->mode_attr & 0x0080)
@@ -392,7 +384,6 @@ static void set_window_pos(struct win_info *wi, size_t win_pos)
     if (wi->win_num < 0)
 	return;			/* This should never happen... */
 
-    memset(&ireg, 0, sizeof ireg);
     ireg.eax.w[0] = 0x4F05;
     ireg.ebx.b[0] = wi->win_num;
     ireg.edx.w[0] = win_pos >> wi->win_gshift;
@@ -459,28 +450,27 @@ static inline void check_escapes(void)
 {
 	com32sys_t ireg, oreg;
 
-        memset(&ireg, 0, sizeof ireg);
 	ireg.eax.b[1] = 0x02;	/* Check keyboard flags */
 	__intcall(0x16, &ireg, &oreg);
 
 	KbdFlags = oreg.eax.b[0];
 
 	/* Ctrl->skip 386 check */
-	if (!(oreg.eax.b[0] & 0x04)) {
+	if (oreg.eax.b[0] & 0x04) {
 		/*
 		 * Now check that there is sufficient low (DOS) memory
 		 *
 		 * NOTE: Linux doesn't use all of real_mode_seg, but we use
 		 * the same segment for COMBOOT images, which can use all 64K.
 		 */
-		uint32_t mem;
+		uint16_t mem;
 
 		__intcall(0x12, &ireg, &oreg);
 
 		mem = ((uint32_t)__lowmem_heap) + min_lowmem_heap + 1023;
 		mem = mem >> 10;
 
-		if (oreg.eax.w[0] < mem) {
+		if (mem < oreg.eax.w[0]) {
 			char buf[256];
 
 			snprintf(buf, sizeof(buf),
@@ -549,7 +539,6 @@ static int bios_scan_memory(scan_memory_callback_t callback, void *data)
     if (!e820buf)
 	return -1;
 
-    memset(&ireg, 0, sizeof ireg);
     ireg.eax.l = 0xe820;
     ireg.edx.l = 0x534d4150;
     ireg.ebx.l = 0;
@@ -603,7 +592,6 @@ static int bios_scan_memory(scan_memory_callback_t callback, void *data)
 	return 0;
 
     /* Next try INT 15h AX=E801h */
-    memset(&ireg, 0, sizeof ireg);
     ireg.eax.w[0] = 0xe801;
     __intcall(0x15, &ireg, &oreg);
 
@@ -623,9 +611,7 @@ static int bios_scan_memory(scan_memory_callback_t callback, void *data)
     }
 
     /* Finally try INT 15h AH=88h */
-    memset(&ireg, 0, sizeof ireg);
     ireg.eax.w[0] = 0x8800;
-    __intcall(0x15, &ireg, &oreg);
     if (!(oreg.eflags.l & EFLAGS_CF) && oreg.eax.w[0]) {
 	rv = callback(data, (addr_t) 1 << 20, oreg.ecx.w[0] << 10, SMT_FREE);
 	if (rv)
@@ -665,29 +651,6 @@ void bios_init(void)
 	 * Scan the DMI tables for interesting information.
 	 */
 	dmi_init();
-}
-
-extern void bios_timer_cleanup(void);
-
-extern uint32_t OrigFDCTabPtr;
-
-static void bios_cleanup_hardware(void)
-{
-	/* Restore the original pointer to the floppy descriptor table */
-	if (OrigFDCTabPtr)
-		*((uint32_t *)(4 * 0x1e)) = OrigFDCTabPtr;
-
-	/*
-	 * Linux wants the floppy motor shut off before starting the
-	 * kernel, at least bootsect.S seems to imply so.  If we don't
-	 * load the floppy driver, this is *definitely* so!
-	 */
-	__intcall(0x13, &zero_regs, NULL);
-
-	call16(bios_timer_cleanup, &zero_regs, NULL);
-
-	/* If we enabled serial port interrupts, clean them up now */
-	sirq_cleanup();
 }
 
 extern void *bios_malloc(size_t, enum heap, size_t);

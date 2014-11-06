@@ -25,26 +25,25 @@ LNXLIBS	   =
 
 CFLAGS    += -DSYSLINUX
 MODULES	  = lua.c32
-MODULES   += cpu.c32
-MODULES   += dhcp.c32
-MODULES   += dmi.c32
-MODULES   += lfs.c32
-MODULES   += pci.c32
-MODULES   += syslinux.c32
-MODULES   += vesa.c32
-MODULES   += cmenu.c32
 TESTFILES =
 
 OBJS	  = lua.o
 
 LIBLUA    = liblua.c32
 
-LIBLUA_OBJS := lapi.o lcode.o lctype.o ldebug.o ldo.o ldump.o lfunc.o
-LIBLUA_OBJS += lgc.o llex.o lmem.o lobject.o lopcodes.o lparser.o
-LIBLUA_OBJS += lstate.o lstring.o ltable.o ltm.o lundump.o lvm.o lzio.o
+LIBLUA_OBJS := lapi.o lcode.o ldebug.o ldo.o ldump.o lfunc.o
+LIBLUA_OBJS += lgc.o llex.o lmem.o  lobject.o lopcodes.o lparser.o
+LIBLUA_OBJS += lstate.o lstring.o ltable.o ltm.o lvm.o lzio.o lundump.o
+LIBLUA_OBJS += syslinux.o
 
-LIBLUA_OBJS += lauxlib.o lbaselib.o lbitlib.o lcorolib.o ldblib.o liolib.o
-LIBLUA_OBJS += loslib.o lstrlib.o ltablib.o loadlib.o linit.o
+LIBLUA_OBJS += lauxlib.o lbaselib.o ldblib.o ltablib.o
+LIBLUA_OBJS += lstrlib.o loadlib.o linit.o
+LIBLUA_OBJS += liolib.o
+LIBLUA_OBJS += dmi.o
+LIBLUA_OBJS += cpu.o
+LIBLUA_OBJS += pci.o
+LIBLUA_OBJS += vesa.o
+LIBLUA_OBJS += dhcp.o
 
 CFLAGS += -DLUA_ANSI
 
@@ -56,9 +55,6 @@ liblua.elf : $(LIBLUA_OBJS)
 
 lua.elf : $(OBJS) $(LIBLUA) $(C_LIBS)
 	$(LD) $(LDFLAGS) -o $@ $^
-
-cmenu.o : CFLAGS += -I$(com32)/cmenu/libmenu
-cmenu.elf : $(objdir)/com32/cmenu/libmenu/libmenu.c32
 
 tidy dist:
 	rm -f *.o *.lo *.lst *.elf .*.d *.tmp

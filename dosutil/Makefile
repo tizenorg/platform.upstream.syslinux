@@ -7,9 +7,6 @@ include $(MAKEDIR)/syslinux.mk
 WCL	= wcl
 WCLOPT	= -6 -osx -mt -bt=DOS -l=COM
 
-WCL_IS_GOOD := $(shell $(WCL) $(WCLOPT) \
-        -o hello.exe $(SRC)/../win/hello.c >/dev/null 2>&1 ; echo $$?)
-
 UPX     = upx
 
 NASM    = nasm
@@ -48,12 +45,7 @@ TARGETS   = $(WCTARGETS) $(NSTARGETS)
 	rm -f $*.0*
 	chmod a-x $@
 
-ifeq ($(WCL_IS_GOOD),0)
 all: $(TARGETS)
-else
-all: $(NSTARGETS)
-	rm -f $(WCTARGETS)
-endif
 
 tidy dist:
 	-rm -f *.obj *.lst *.o *.0*

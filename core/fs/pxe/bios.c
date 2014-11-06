@@ -5,14 +5,11 @@
 #include <net.h>
 #include <minmax.h>
 #include <bios.h>
-#include <dprintf.h>
 
 static uint16_t real_base_mem;	   /* Amount of DOS memory after freeing */
 
 static bool has_gpxe;
 static uint32_t gpxe_funcs;
-
-far_ptr_t StrucPtr;
 
 /*
  * Validity check on possible !PXE structure in buf
@@ -165,28 +162,20 @@ int pxe_init(bool quiet)
     regs.eax.w[0] = 0x5650;
     call16(pxe_int1a, &regs, &regs);
     if (!(regs.eflags.l & EFLAGS_CF) && (regs.eax.w[0] == 0x564e)) {
-	off = regs.ebx.w[0];
-	seg = regs.es;
-	pxenv = MK_PTR(seg, off);
+	pxenv = MK_PTR(regs.es, regs.ebx.w[0]);
         if (is_pxenv(pxenv))
             goto have_pxenv;
     }
 
     /* Plan D: !PXE memory scan */
     plan++;
-    if ((pxe = memory_scan_for_pxe_struct())) {
-	off = OFFS(pxe);
-	seg = SEG(pxe);
+    if ((pxe = memory_scan_for_pxe_struct()))
         goto have_pxe;
-    }
 
     /* Plan E: PXENV+ memory scan */
     plan++;
-    if ((pxenv = memory_scan_for_pxenv_struct())) {
-	off = OFFS(pxenv);
-	seg = SEG(pxenv);
+    if ((pxenv = memory_scan_for_pxenv_struct()))
         goto have_pxenv;
-    }
 
     /* Found nothing at all !! */
     if (!quiet)
@@ -233,9 +222,6 @@ int pxe_init(bool quiet)
     type = "!PXE";
 
  have_entrypoint:
-    StrucPtr.offs = off;
-    StrucPtr.seg  = seg;
-
     if (!quiet) {
 	ddprintf("%s entry point found (we hope) at %04X:%04X via plan %c\n",
 	       type, PXEEntry.seg, PXEEntry.offs, plan);
@@ -386,9 +372,6 @@ cant_free:
     return;
 }
 
-extern const char bdhcp_data[], adhcp_data[];
-extern const uint32_t bdhcp_len, adhcp_len;
-
 void net_parse_dhcp(void)
 {
     int pkt_len;
@@ -404,18 +387,11 @@ void net_parse_dhcp(void)
     *LocalDomain = 0;   /* No LocalDomain received */
 
     /*
-     * Parse any "before" hardcoded options
-     */
-    dprintf("DHCP: bdhcp_len = %d\n", bdhcp_len);
-    parse_dhcp_options(bdhcp_data, bdhcp_len, 0);
-
-    /*
      * Get the DHCP client identifiers (query info 1)
      */
     ddprintf("Getting cached packet ");
     pkt_len = pxe_get_cached_info(1, bp, dhcp_max_packet);
     parse_dhcp(bp, pkt_len);
-
     /*
      * We don't use flags from the request packet, so
      * this is a good time to initialize DHCPMagic...
@@ -449,12 +425,6 @@ void net_parse_dhcp(void)
     pkt_len = pxe_get_cached_info(3, bp, dhcp_max_packet);
     parse_dhcp(bp, pkt_len);
     ddprintf("\n");
-
-    /*
-     * Parse any "after" hardcoded options
-     */
-    dprintf("DHCP: adhcp_len = %d\n", adhcp_len);
-    parse_dhcp_options(adhcp_data, adhcp_len, 0);
 
     lfree(bp);
 }

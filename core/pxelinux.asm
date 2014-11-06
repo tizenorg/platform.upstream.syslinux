@@ -62,8 +62,9 @@ InitStack	resd 1
 PXEStack	resd 1			; Saved stack during PXE call
 
 		alignb 4
-                global DHCPMagic, RebootTime, BIOSName
+                global DHCPMagic, RebootTime, StrucPtr, BIOSName
 RebootTime	resd 1			; Reboot timeout, if set by option
+StrucPtr	resw 2			; Pointer to PXENV+ or !PXE structure
 LocalBootType	resw 1			; Local boot return code
 DHCPMagic	resb 1			; PXELINUX magic flags
 BIOSName	resw 1			; Dummy variable - always 0
@@ -93,7 +94,6 @@ _start:
 hcdhcp_magic	dd 0x2983c8ac		; Magic number
 hcdhcp_len	dd 7*4			; Size of this structure
 hcdhcp_flags	dd 0			; Reserved for the future
-		global bdhcp_len, adhcp_len
 		; Parameters to be parsed before the ones from PXE
 bdhcp_offset	dd 0			; Offset (entered by patcher)
 bdhcp_len	dd 0			; Length (entered by patcher)
@@ -273,9 +273,22 @@ KernelName	resb FILENAME_MAX	; Mangled name for kernel
 
 		section .text16
 ;
-; COM32 vestigial data structure
+; COMBOOT-loading code
 ;
+%include "comboot.inc"
 %include "com32.inc"
+
+;
+; Boot sector loading code
+;
+
+;
+; Abort loading code
+;
+
+;
+; Hardware cleanup common code
+;
 
 		section .text16
 		global local_boot16:function hidden
@@ -370,11 +383,9 @@ pxenv:
 		cli
 		inc word [cs:PXEStackLock]
 		jnz .skip1
-		pop bp
 		mov [cs:PXEStack],sp
 		mov [cs:PXEStack+2],ss
 		lss sp,[cs:InitStack]
-		push bp
 .skip1:
 		popf
 
@@ -395,9 +406,7 @@ pxenv:
 		cli
 		dec word [cs:PXEStackLock]
 		jns .skip2
-		pop bp
 		lss sp,[cs:PXEStack]
-		push bp
 .skip2:
 		popf
 
@@ -567,7 +576,3 @@ syslinux_banner	db CR, LF, MY_NAME, ' ', VERSION_STR, ' ', MY_TYPE, ' '
 		section .data16
                 global KeepPXE
 KeepPXE		db 0			; Should PXE be kept around?
-
-		section .bss16
-		global OrigFDCTabPtr
-OrigFDCTabPtr	resd 1			; Keep bios_cleanup_hardware() honest

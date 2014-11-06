@@ -1,6 +1,6 @@
 /* -*- asm -*- -----------------------------------------------------------
  *
- *   Copyright 2009-2014 Intel Corporation; author: H. Peter Anvin
+ *   Copyright 2009 Intel Corporation; author: H. Peter Anvin
  *
  *   Permission is hereby granted, free of charge, to any person
  *   obtaining a copy of this software and associated documentation
@@ -36,11 +36,7 @@
 
 #ifdef CTRL_80
 	.macro ADJUST_DRIVE
-	pusha
-	movb	$0x02, %ah
-	int	$0x16
-	testb	$0x04, %al
-	popa
+	testb	$0x04, BIOS_kbdflags
 	jz	1f
 	movb	$0x80, %dl
 1:

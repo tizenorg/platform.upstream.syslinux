@@ -2,7 +2,7 @@
  * -----------------------------------------------------------------------
  *
  *   Copyright 1994-2008 H. Peter Anvin - All Rights Reserved
- *   Copyright 2009-2014 Intel Corporation; author: H. Peter Anvin
+ *   Copyright 2009 Intel Corporation; author: H. Peter Anvin
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -54,7 +54,7 @@ uint8_t ScrollAttribute = 0x07; /* Grey on white (normal text color) */
  *
  * Returns 0 on success, or -1 on error.
  */
-__export int loadkeys(const char *filename)
+__export int loadkeys(char *filename)
 {
 	FILE *f;
 
@@ -266,40 +266,6 @@ char bios_getchar(char *hi)
 
 	reset_idle();		/* Character received */
 	return data;
-}
-
-uint8_t bios_shiftflags(void)
-{
-	com32sys_t reg;
-	uint8_t ah, al;
-
-	memset(&reg, 0, sizeof reg);
-	reg.eax.b[1] = 0x12;
-	__intcall(0x16, &reg, &reg);
-	ah = reg.eax.b[1];
-	al = reg.eax.b[0];
-
-	/*
-	 * According to the Interrupt List, "many machines" don't correctly
-	 * fold the Alt state, presumably because it might be AltGr.
-	 * Explicitly fold the Alt and Ctrl states; it fits our needs
-	 * better.
-	 */
-
-	if (ah & 0x0a)
-		al |= 0x08;
-	if (ah & 0x05)
-		al |= 0x04;
-
-	return al;
-}
-
-__export uint8_t kbd_shiftflags(void)
-{
-	if (firmware->i_ops->shiftflags)
-		return firmware->i_ops->shiftflags();
-	else
-		return 0;	/* Unavailable on this firmware */
 }
 
 /*

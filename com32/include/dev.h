@@ -36,7 +36,6 @@
 
 #include <klibc/extern.h>
 #include <stdint.h>
-#include <stddef.h>
 
 struct input_dev;
 struct output_dev;

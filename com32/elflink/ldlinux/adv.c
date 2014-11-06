@@ -34,7 +34,9 @@
 #include <syslinux/adv.h>
 #include <syslinux/firmware.h>
 #include <klibc/compiler.h>
-#include <syslinux/adv.h>
+
+__export void *__syslinux_adv_ptr;
+__export size_t __syslinux_adv_size;
 
 void __constructor __syslinux_init(void)
 {

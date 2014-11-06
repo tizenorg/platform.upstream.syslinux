@@ -27,7 +27,7 @@ static int vesa_getmodes(lua_State *L)
   if (!mi)
       goto out;
 
-  memset(&rm, 0, sizeof(rm));
+  memset(&rm, 0, sizeof rm);
   memset(gi, 0, sizeof *gi);
 
   gi->signature = VBE2_MAGIC;   /* Get VBE2 extended data */
@@ -61,7 +61,6 @@ static int vesa_getmodes(lua_State *L)
 
     printf("Found mode: 0x%04x (%dx%dx%d)\n", mode, mi->h_res, mi->v_res, mi->bpp);
 
-    memset(&rm, 0, sizeof(rm));
     memset(mi, 0, sizeof *mi);
     rm.eax.w[0] = 0x4F01;       /* Get SVGA mode information */
     rm.ecx.w[0] = mode;
@@ -123,7 +122,7 @@ static int vesa_load_background(lua_State *L)
   return 0;
 }
 
-static const luaL_Reg vesalib[] = {
+static const luaL_reg vesalib[] = {
   {"getmodes", vesa_getmodes},
   {"setmode", vesa_setmode},
   {"load_background", vesa_load_background},
@@ -133,7 +132,7 @@ static const luaL_Reg vesalib[] = {
 /* This defines a function that opens up your library. */
 
 LUALIB_API int luaopen_vesa (lua_State *L) {
-  luaL_newlib(L, vesalib);
+  luaL_openlib(L, LUA_VESALIBNAME, vesalib, 0);
   return 1;
 }
 

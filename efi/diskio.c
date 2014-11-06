@@ -1,7 +1,3 @@
-/*
- * Copyright 2011-2014 Intel Corporation - All Rights Reserved
- */
-
 #include <fs.h>
 #include <ilog2.h>
 #include <disk.h>

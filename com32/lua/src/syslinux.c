@@ -25,7 +25,6 @@
  *
  * ----------------------------------------------------------------------- */
 
-#include <getkey.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -188,6 +187,7 @@ static int sl_boot_linux(lua_State * L)
     char *newcmdline;
     uint32_t mem_limit = luaL_optint(L, 3, 0);
     uint16_t video_mode = luaL_optint(L, 4, 0);
+//  int ret, i;
     int ret;
     char **argv, **argp, *arg, *p;
 
@@ -219,6 +219,27 @@ static int sl_boot_linux(lua_State * L)
        msleep(1000);
      */
 
+    /* Look for specific command-line arguments we care about */
+    if ((arg = find_argument(argp, "mem=")))
+	mem_limit = saturate32(suffix_number(arg));
+
+    if ((arg = find_argument(argp, "vga="))) {
+	switch (arg[0] | 0x20) {
+	case 'a':		/* "ask" */
+	    video_mode = 0xfffd;
+	    break;
+	case 'e':		/* "ext" */
+	    video_mode = 0xfffe;
+	    break;
+	case 'n':		/* "normal" */
+	    video_mode = 0xffff;
+	    break;
+	default:
+	    video_mode = strtoul(arg, NULL, 0);
+	    break;
+	}
+    }
+
     printf("Loading kernel %s...\n", kernel);
     if (loadfile(kernel, &kernel_data, &kernel_len))
 	printf("failed!\n");
@@ -246,6 +267,17 @@ static int sl_boot_linux(lua_State * L)
 		*p++ = ',';
 	} while ((arg = p));
     }
+
+    if (!loadfile("/testfile1", &file_data, &file_len)) {
+	if (initramfs_add_file(initramfs, file_data, file_len, file_len,
+			       "/testfile1", 0, 0755))
+	    printf("Adding extra file failed\n");
+    } else
+	printf("Loading extra file failed\n");
+
+    /* DEBUG
+       msleep(10000);
+     */
 
     ret = syslinux_boot_linux(kernel_data, kernel_len, initramfs, NULL, newcmdline);
 
@@ -354,12 +386,12 @@ static int sl_initramfs_load_archive(lua_State * L)
 static int sl_initramfs_add_file(lua_State * L)
 {
     struct initramfs *initramfs = luaL_checkudata(L, 1, SYSLINUX_FILE);
-    const char *filename = luaL_checkstring(L, 2);
+    /* FIXME: This code is doing nothing */
+    //const char *filename = luaL_checkstring(L, 2);
     void *file_data = NULL;
     size_t file_len = 0;
 
-    return initramfs_add_file(initramfs, file_data, file_len, file_len,
-			      filename, 0, 0755);
+    return initramfs_add_file(initramfs, file_data, file_len, file_len, "/testfile1", 0, 0755);
 }
 
 static int sl_boot_it(lua_State * L)
@@ -441,20 +473,7 @@ static int sl_version(lua_State * L)
     return 1;
 }
 
-static int sl_get_key (lua_State * L)
-{
-    int timeout = luaL_checkint (L, 1);
-    lua_pushinteger (L, get_key (stdin, timeout));
-    return 1;
-}
-
-static int sl_KEY_CTRL (lua_State * L)
-{
-    lua_pushinteger (L, KEY_CTRL (luaL_checkint (L, 1)));
-    return 1;
-}
-
-static const luaL_Reg syslinuxlib[] = {
+static const luaL_reg syslinuxlib[] = {
     {"run_command", sl_run_command},
     {"run_default", sl_run_default},
     {"local_boot", sl_local_boot},
@@ -475,8 +494,6 @@ static const luaL_Reg syslinuxlib[] = {
     {"reboot", sl_reboot},
     {"derivative", sl_derivative},
     {"version", sl_version},
-    {"get_key", sl_get_key},
-    {"KEY_CTRL", sl_KEY_CTRL},
     {NULL, NULL}
 };
 
@@ -487,39 +504,6 @@ LUALIB_API int luaopen_syslinux(lua_State * L)
 
     luaL_newmetatable(L, SYSLINUX_FILE);
 
-    luaL_newlib(L, syslinuxlib);
-
-    lua_newtable (L);
-#define export_key(x) lua_pushinteger (L, KEY_##x); lua_setfield (L, -2, #x);
-    export_key (NONE);
-    export_key (BACKSPACE);
-    export_key (TAB);
-    export_key (ENTER);
-    export_key (ESC);
-    export_key (DEL);
-    export_key (F1);
-    export_key (F2);
-    export_key (F3);
-    export_key (F4);
-    export_key (F5);
-    export_key (F6);
-    export_key (F7);
-    export_key (F8);
-    export_key (F9);
-    export_key (F10);
-    export_key (F11);
-    export_key (F12);
-    export_key (UP);
-    export_key (DOWN);
-    export_key (LEFT);
-    export_key (RIGHT);
-    export_key (PGUP);
-    export_key (PGDN);
-    export_key (HOME);
-    export_key (END);
-    export_key (INSERT);
-    export_key (DELETE);
-    lua_setfield (L, -2, "KEY");
-
+    luaL_openlib(L, LUA_SYSLINUXLIBNAME, syslinuxlib, 0);
     return 1;
 }

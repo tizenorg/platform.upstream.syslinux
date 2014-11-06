@@ -1,7 +1,7 @@
 ## -----------------------------------------------------------------------
 ##
 ##   Copyright 1998-2009 H. Peter Anvin - All Rights Reserved
-##   Copyright 2009-2014 Intel Corporation; author: H. Peter Anvin
+##   Copyright 2009-2010 Intel Corporation; author: H. Peter Anvin
 ##
 ##   This program is free software; you can redistribute it and/or modify
 ##   it under the terms of the GNU General Public License as published by
@@ -78,9 +78,8 @@ FILTER_OBJS = %rawcon.o %plaincon.o %pxelinux-c.o %ldlinux-c.o \
 	$(subst $(OBJ)/,,$(PXELINUX_OBJS))
 
 ifdef EFI_BUILD
-# EFI is single-threaded, and doesn't use the LZO assembly decoder
+# EFI is single-threaded.
 FILTER_OBJS += $(subst $(SRC)/,, \
-	$(patsubst %.S,%.o, $(wildcard $(SRC)/lzo/*.S)) \
 	$(patsubst %.c,%.o, $(wildcard $(SRC)/thread/*.c)) \
 	$(patsubst %.S,%.o, $(wildcard $(SRC)/thread/*.S)))
 endif
@@ -103,8 +102,7 @@ NASMOPT  += $(NASMDEBUG)
 
 PREPCORE = $(OBJ)/../lzo/prepcore
 
-CFLAGS += -D__SYSLINUX_CORE__ -D__FIRMWARE_$(FIRMWARE)__ \
-	  -I$(objdir) -DLDLINUX=\"$(LDLINUX)\"
+CFLAGS += -D__SYSLINUX_CORE__ -I$(objdir) -DLDLINUX=\"$(LDLINUX)\"
 
 # The DATE is set on the make command line when building binaries for
 # official release.  Otherwise, substitute a hex string that is pretty much
