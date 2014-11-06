@@ -1,7 +1,7 @@
 # -*- rpm -*-
 Summary: Kernel loader which uses a FAT, ext2/3 or iso9660 filesystem or a PXE network
 Name: syslinux
-Version: 6.01
+Version: 6.02
 Release: 0
 License: GPL-2.0
 Url: http://syslinux.zytor.com/
@@ -65,24 +65,26 @@ booting in the /var/lib/tftpboot directory.
 %prep
 %setup -q -n %{name}-%{version}
 rm -f Makefile.private
+find . -iname "*.sh" -exec chmod u+rwx '{}' \;
 
 %build
 cp %{SOURCE1001} .
 
-%define local_make %__make HAVE_FIRMWARE=1
+%__make -C gnu-efi/gnu-efi-3.0
+%make_install -C gnu-efi/gnu-efi-3.0/
+
+%define local_make %__make -j1 \
+    HAVE_FIRMWARE=1
 
 %local_make %{?_smp_mflags} clean -k \
 	CC='%{my_cc}' \
-	firmware=bios \
     || :
 
 %local_make \
-	CC='%{my_cc}' \
-	firmware=bios
+	CC='%{my_cc}'
 
-%local_make all \
-	CC='%{my_cc}' \
-	firmware=bios
+%local_make installer \
+	CC='%{my_cc}'
 
 %install
 rm -rf %{buildroot}
@@ -92,8 +94,7 @@ rm -rf %{buildroot}
 	INSTALLROOT=%{buildroot} BINDIR=%{_bindir} SBINDIR=%{_sbindir} \
 	LIBDIR=%{_libdir} DATADIR=%{_datadir} \
 	MANDIR=%{_mandir} INCDIR=%{_includedir} \
-	TFTPBOOT=/var/lib/tftpboot EXTLINUXDIR=/boot/extlinux \
-	firmware=bios
+	TFTPBOOT=/var/lib/tftpboot EXTLINUXDIR=/boot/extlinux
 
 %clean
 rm -rf %{buildroot}
@@ -124,7 +125,7 @@ rm -rf %{buildroot}
 %manifest syslinux.manifest
 %defattr(-,root,root)
 %{_sbindir}/extlinux
-#/boot/extlinux
+/boot/extlinux
 
 %files tftpboot
 %manifest syslinux.manifest
