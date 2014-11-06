@@ -2,7 +2,7 @@
 Summary: Kernel loader which uses a FAT, ext2/3 or iso9660 filesystem or a PXE network
 Name: syslinux
 Version: 6.01
-Release: 20141106.1415282139pcoval
+Release: 0
 License: GPL-2.0
 Url: http://syslinux.zytor.com/
 #X-Vc-Url: git://git.zytor.com/syslinux/syslinux.git
