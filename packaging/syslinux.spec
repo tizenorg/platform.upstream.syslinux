@@ -20,11 +20,9 @@ Autoreq: 0
 %ifarch x86_64
 Requires: mtools
 %define my_cc gcc -Wno-sizeof-pointer-memaccess
-%define all_firmware bios
 %else
 Requires: mtools, libc.so.6
 %define my_cc gcc -m32 -Wno-sizeof-pointer-memaccess
-%define all_firmware bios
 %endif
 
 # NOTE: extlinux belongs in /sbin, not in /usr/sbin, since it is typically
@@ -68,38 +66,26 @@ booting in the /var/lib/tftpboot directory.
 %prep
 %setup -q -a 10 -n %{name}-%{version}
 
-
 %build
 cp %{SOURCE1001} .
 #touch efi/tiny
 
-%define make %__make -j1 CC='%{my_cc}' \
- HAVE_FIRMWARE=1 \
- all_firmware=%{all_firmware}
+%__make CC='%{my_cc}' %{?_smp_mflags} clean
 
-#%make clean -k || :
-
-%make version.gen bios clean all
-
-%ifarch %{x86_64}
-#make efi64 clean all
-%endif
-
-#%make
+touch efi/tiny
+%__make CC='%{my_cc}' -j1 \
+    all_firmware=bios
 
 %install
 rm -rf %{buildroot}
 
-%make install-all \
-    INSTALLROOT=%{buildroot} \
-    BINDIR=%{_bindir} \
-    SBINDIR=%{_sbindir} \
-    LIBDIR=%{_libdir} \
-    DATADIR=%{_datadir} \
-    MANDIR=%{_mandir} \
-    INCDIR=%{_includedir} \
-    TFTPBOOT=/var/lib/tftpboot \
-    EXTLINUXDIR=/boot/extlinux
+make \
+    CC='%{my_cc}' install \
+	INSTALLROOT=%{buildroot} BINDIR=%{_bindir} SBINDIR=%{_sbindir} \
+	LIBDIR=%{_libdir} DATADIR=%{_datadir} \
+	MANDIR=%{_mandir} INCDIR=%{_includedir} \
+	TFTPBOOT=/var/lib/tftpboot EXTLINUXDIR=/boot/extlinux \
+    all_firmware=bios
 
 %clean
 rm -rf %{buildroot}

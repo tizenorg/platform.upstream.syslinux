@@ -46,11 +46,10 @@ SFLAGS     = $(GCCOPT) $(GCCWARN) $(ARCHOPT) \
 
 LIBEFI = $(objdir)/lib/libefi.a
 
-libefi: ${LIBEFI}
-
 $(LIBEFI):
 	@echo Building gnu-efi for $(EFI_SUBARCH)
-	$(topdir)/efi/check-gnu-efi.sh $(EFI_SUBARCH) $(objdir)
+	$(topdir)/efi/check-gnu-efi.sh $(EFI_SUBARCH) $(objdir) \
+	|| $(topdir)/efi/build-gnu-efi.sh $(EFI_SUBARCH) $(objdir)
 
 
 %.o: %.S	# Cancel old rule
