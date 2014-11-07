@@ -29,7 +29,7 @@ fi
 
 (
 	cd ../..
-	git submodule update --init
+	[ ! -e .git ] || git submodule update --init
 )
 
 mkdir -p "$objdir/gnu-efi"

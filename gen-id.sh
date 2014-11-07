@@ -12,7 +12,7 @@ tim="$2"
 top=`dirname "$0"`
 
 if test -n "$GIT_DIR" -o -d "$top"/.git -o -f "$top"/.git; then
-    id="$(git describe)"
+    id="$( [ -e '.git' ] && git describe || echo 0)"
     if test -n "$id"; then
 	if test x"$(echo "$id" | cut -d- -f1)" = xsyslinux; then
             id="$(echo "$id" | cut -d- -f2-)"

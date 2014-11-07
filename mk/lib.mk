@@ -48,6 +48,7 @@ REQFLAGS  = $(GCCOPT) -g -D__COM32__ -D__FIRMWARE_$(FIRMWARE)__ \
 	    -I$(SRC)/../include -I$(com32)/include/sys \
 	    -I$(topdir)/core/include -I$(com32)/lib/ \
 	    -I$(com32)/lib/sys/module -I$(OBJ)/../..
+
 OPTFLAGS  = -Os -march=$(MARCH) -falign-functions=0 -falign-jumps=0 \
 	    -falign-labels=0 -ffast-math -fomit-frame-pointer
 WARNFLAGS = $(GCCWARN) -Wpointer-arith -Wwrite-strings -Wstrict-prototypes -Winline
