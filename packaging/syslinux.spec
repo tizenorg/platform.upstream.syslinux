@@ -2,10 +2,10 @@
 Summary: Kernel loader which uses a FAT, ext2/3 or iso9660 filesystem or a PXE network
 Name: syslinux
 Version: 6.02
-Release: 0
+Release: 20141113.1415876884pcoval
 License: GPL-2.0
 Url: http://syslinux.zytor.com/
-#X-Vc-Url: git://git.zytor.com/syslinux/syslinux.git
+#X-Vc-Url: git://git.kernel.org/pub/scm/boot/syslinux/syslinux.git
 Group: System/Other
 Source0: ftp://ftp.kernel.org/pub/linux/utils/boot/syslinux/%{name}-%{version}.tar.gz
 Source1001: packaging/syslinux.manifest
@@ -14,13 +14,14 @@ ExclusiveArch: %{ix86} x86_64
 BuildRequires: nasm >= 0.98.39, perl
 BuildRequires: python
 BuildRequires: libuuid-devel
-
-Autoreq: 0
-%ifarch x86_64
+BuildRequires: git
 Requires: mtools
+
+%ifarch x86_64
 %define my_cc gcc -Wno-sizeof-pointer-memaccess
 %else
-Requires: mtools, libc.so.6
+Autoreq: 0
+Requires: libc.so.6
 %define my_cc gcc -m32 -Wno-sizeof-pointer-memaccess
 %endif
 
@@ -63,36 +64,22 @@ All the SYSLINUX/PXELINUX modules directly available for network
 booting in the /var/lib/tftpboot directory.
 
 %prep
-%setup -q -n %{name}-%{version}
-rm -f Makefile.private
-find . -iname "*.sh" -exec chmod u+rwx '{}' \;
+%setup -q  -n %{name}-%{version}
 
 %build
 cp %{SOURCE1001} .
+%define make %__make CC='%{my_cc}'
 
-ls
+# disable debug and development flags to reduce bootloader size
+truncate --size 0 mk/devel.mk
 
-%__make -C gnu-efi/gnu-efi-3.0
-%make_install -C gnu-efi/gnu-efi-3.0/
-
-%define local_make %__make -j1 \
-    HAVE_FIRMWARE=1
-
-%local_make %{?_smp_mflags} clean -k \
-	CC='%{my_cc}' \
-    || :
-
-%local_make \
-	CC='%{my_cc}'
-
-%local_make installer \
-	CC='%{my_cc}'
+%make bios clean
+%make bios installer
 
 %install
-rm -rf %{buildroot}
 
-%local_make install-all \
-	CC='%{my_cc}' \
+%make \
+	bios install netinstall extbootinstall \
 	INSTALLROOT=%{buildroot} BINDIR=%{_bindir} SBINDIR=%{_sbindir} \
 	LIBDIR=%{_libdir} DATADIR=%{_datadir} \
 	MANDIR=%{_mandir} INCDIR=%{_includedir} \
@@ -110,6 +97,7 @@ rm -rf %{buildroot}
 %{_datadir}/syslinux/*.c32
 %{_datadir}/syslinux/*.bin
 %{_datadir}/syslinux/*.0
+%{_datadir}/syslinux/*.exe
 %{_datadir}/syslinux/memdisk
 %{_datadir}/syslinux/dosutil
 %license COPYING
@@ -117,7 +105,8 @@ rm -rf %{buildroot}
 %files devel
 %manifest syslinux.manifest
 %defattr(-,root,root)
-%doc NEWS README doc/*
+%license COPYING doc/logo/LICENSE
+%doc NEWS README doc/*.txt doc/logo/*.png
 %doc sample
 %doc %{_mandir}/man*/*
 %{_datadir}/syslinux/com32
@@ -126,13 +115,15 @@ rm -rf %{buildroot}
 %files extlinux
 %manifest syslinux.manifest
 %defattr(-,root,root)
+%license COPYING
 %{_sbindir}/extlinux
 /boot/extlinux
 
 %files tftpboot
 %manifest syslinux.manifest
 %defattr(-,root,root)
-#/var/lib/tftpboot
+%license COPYING
+/var/lib/tftpboot
 
 %post extlinux
 # If we have a /boot/extlinux.conf file, assume extlinux is our bootloader
