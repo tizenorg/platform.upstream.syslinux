@@ -233,7 +233,7 @@ else
 
 # Don't do anything for the rest of MAKECMDGOALS at this level. It
 # will be handled for each of $(firmware).
-strip tidy clean dist spotless install installer netinstall:
+strip tidy clean dist spotless install installer netinstall extbootinstall:
 
 endif
 
