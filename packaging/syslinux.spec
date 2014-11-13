@@ -2,7 +2,7 @@
 Summary: Kernel loader which uses a FAT, ext2/3 or iso9660 filesystem or a PXE network
 Name: syslinux
 Version: 6.03
-Release: 0
+Release: 20141113.1415876884pcoval
 License: GPL-2.0
 Url: http://syslinux.zytor.com/
 #X-Vc-Url: git://git.kernel.org/pub/scm/boot/syslinux/syslinux.git
@@ -71,6 +71,12 @@ booting in the /var/lib/tftpboot directory.
 cp %{SOURCE1001} .
 %define make %__make CC='%{my_cc}'
 
+# do not swallow efi compilation output to make debugging easier
+sed 's|> /dev/null 2>&1||' -i efi/check-gnu-efi.sh
+
+# disable debug and development flags to reduce bootloader size
+truncate --size 0 mk/devel.mk
+
 %make bios clean
 %make bios all
 
@@ -103,7 +109,7 @@ rm -rf %{buildroot}
 %manifest syslinux.manifest
 %defattr(-,root,root)
 %license COPYING doc/logo/LICENSE
-%doc NEWS README doc/*
+%doc NEWS README doc/*.txt doc/logo/*.png
 %doc sample
 %doc %{_mandir}/man*/*
 %{_datadir}/syslinux/com32
