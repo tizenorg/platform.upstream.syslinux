@@ -850,7 +850,7 @@ CLEANUP	+= $(NRV2B)
 
 $(ZBIN) : util/zbin.c util/nrv2b.c $(MAKEDEPS)
 	$(QM)$(ECHO) "  [HOSTCC] $@"
-	$(Q)$(HOST_CC) -O2 -o $@ $<
+	$(Q)$(HOST_CC) -O0 -o $@ $<
 CLEANUP += $(ZBIN)
 
 ###############################################################################
