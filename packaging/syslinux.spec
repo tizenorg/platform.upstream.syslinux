@@ -2,7 +2,7 @@
 Summary: Kernel loader which uses a FAT, ext2/3 or iso9660 filesystem or a PXE network
 Name: syslinux
 Version: 6.03
-Release: 0
+Release: 20141114.1415978833pcoval
 License: GPL-2.0
 Url: http://syslinux.zytor.com/
 #X-Vc-Url: git://git.kernel.org/pub/scm/boot/syslinux/syslinux.git
@@ -74,6 +74,7 @@ cp %{SOURCE1001} .
 # CFLAGS=-O0
 
 %make bios clean
+%make bios spotless
 %make bios all
 
 #%make bios test  sudo=echo

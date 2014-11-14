@@ -16,7 +16,7 @@
 
 include $(MAKEDIR)/syslinux.mk
 
-OPTFLAGS = -g -Os
+OPTFLAGS = -g -O0
 INCLUDES = -I$(SRC) -I$(objdir) -I$(SRC)/../libinstaller
 CFLAGS	 = $(GCCWARN) -D_FILE_OFFSET_BITS=64 $(OPTFLAGS) $(INCLUDES)
 LDFLAGS	 = 

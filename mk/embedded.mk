@@ -41,7 +41,7 @@ GCCOPT	  += $(call gcc_ok,-freg-struct-return,)
 ifdef EFI_BUILD
 GCCOPT    += -Os -fomit-frame-pointer -msoft-float
 else
-GCCOPT    += -Os -fomit-frame-pointer -mregparm=3 -DREGPARM=3 \
+GCCOPT    += -O0 -fomit-frame-pointer -mregparm=3 -DREGPARM=3 \
              -msoft-float
 endif
 GCCOPT    += $(call gcc_ok,-fno-exceptions,)
