@@ -73,12 +73,6 @@ cp %{SOURCE1001} .
 %define make %__make CC='%{my_cc}' OPTFLAGS="-O0 -g"
 # CFLAGS=-O0
 
-# do not swallow efi compilation output to make debugging easier
-sed 's|> /dev/null 2>&1||' -i efi/check-gnu-efi.sh
-
-# disable debug and development flags to reduce bootloader size
-truncate --size 0 mk/devel.mk
-
 %make bios clean
 %make bios all
 
@@ -113,7 +107,7 @@ rm -rf %{buildroot}
 %manifest syslinux.manifest
 %defattr(-,root,root)
 %license COPYING doc/logo/LICENSE
-%doc NEWS README doc/*.txt doc/logo/*.png
+%doc NEWS README doc/*
 %doc sample
 %doc %{_mandir}/man*/*
 %{_datadir}/syslinux/com32
