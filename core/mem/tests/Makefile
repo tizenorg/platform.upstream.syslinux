@@ -1,17 +1,17 @@
 CFLAGS = -g -I$(topdir)/tests/unittest/include
 
 tests = meminit
-.INTERMEDIATE: $(tests)
 
 all: banner $(tests)
-	for t in $(tests); \
-		do printf "      [+] $$t passed\n" ; ./$$t ; done
-
+	for t in $(tests); do \
+	./$$t \
+	&& printf "      [+] $$t passed\n" \
+	|| printf "      [-] $$t failed\n" ; \
+	done
 banner:
 	printf "    Running memory subsystem unit tests...\n"
-
-meminit: meminit.c ../init.c
 
 %: %.c
 	$(CC) $(CFLAGS) -o $@ $<
 
+meminit: meminit.c ../init.c

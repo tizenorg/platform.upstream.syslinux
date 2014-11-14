@@ -2,7 +2,7 @@
 Summary: Kernel loader which uses a FAT, ext2/3 or iso9660 filesystem or a PXE network
 Name: syslinux
 Version: 6.03
-Release: 20141113.1415876884pcoval
+Release: 0
 License: GPL-2.0
 Url: http://syslinux.zytor.com/
 #X-Vc-Url: git://git.kernel.org/pub/scm/boot/syslinux/syslinux.git
@@ -16,6 +16,7 @@ BuildRequires: nasm >= 0.98.39, perl
 BuildRequires: python
 BuildRequires: libuuid-devel
 BuildRequires: git
+BuildRequires: sudo
 Requires: mtools
 
 %ifarch x86_64
@@ -69,7 +70,8 @@ booting in the /var/lib/tftpboot directory.
 
 %build
 cp %{SOURCE1001} .
-%define make %__make CC='%{my_cc}'
+%define make %__make CC='%{my_cc}' OPTFLAGS="-O0 -g"
+# CFLAGS=-O0
 
 # do not swallow efi compilation output to make debugging easier
 sed 's|> /dev/null 2>&1||' -i efi/check-gnu-efi.sh
@@ -79,6 +81,8 @@ truncate --size 0 mk/devel.mk
 
 %make bios clean
 %make bios all
+
+#%make bios test  sudo=echo
 
 %install
 
