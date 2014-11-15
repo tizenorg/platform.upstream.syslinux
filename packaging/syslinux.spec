@@ -75,6 +75,9 @@ cp %{SOURCE1001} .
 %{my_cc} -v
 nasm -v
 
+# disable debug and development flags to reduce bootloader size
+truncate --size 0 mk/devel.mk
+
 %make bios clean
 %make bios spotless
 %make bios all
