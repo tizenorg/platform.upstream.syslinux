@@ -19,6 +19,7 @@ BuildRequires: git
 Requires: mtools
 
 %ifarch x86_64
+BuildRequires: glibc-devel-32bit, gcc-32bit, libgcc_s1-32bit
 %define my_cc gcc -Wno-sizeof-pointer-memaccess
 %define make %__make CC='%{my_cc}'
 %else
@@ -72,9 +73,38 @@ booting in the /var/lib/tftpboot directory.
 %build
 cp %{SOURCE1001} .
 
+
+%{my_cc} -v
+nasm -v
+
+# disable debug and development flags to reduce bootloader size
+# truncate --size 0 mk/devel.mk
+
 %make bios clean
 %make bios spotless
-%make bios all
+%make bios all -k V=1
+
+
+#{ workaround: rebuild with i686 ABI to get working extlinux
+CFLAGS="-m32"
+export CFLAGS
+
+CXXFLAGS="-m32"
+export CXXFLAGS
+
+FFLAGS="-m32"
+export FFLAGS
+
+%define my_cc gcc -Wno-sizeof-pointer-memaccess
+#%define my_cc gcc -m32 -Wno-sizeof-pointer-memaccess -m32 -march=i686 -mtune=i686 -funwind-tables
+%define make %__make CC='%{my_cc}' OPTFLAGS="-DDEBUG=1 -O0"
+
+rm -rfv bios/extlinux bios/libinstaller bios/com32 bios/core bios/linux bios/win32 bios/win64
+rm -rfv bios/mtools bios/sample bios/txt bios/dos bios/dosutil bios/codepage bios/lzo
+
+%make bios all -k V=1
+#}
+
 
 %install
 
