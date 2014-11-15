@@ -19,6 +19,7 @@ BuildRequires: git
 Requires: mtools
 
 %ifarch x86_64
+BuildRequires: glibc-devel-32bit, gcc-32bit, libgcc_s1-32bit
 %define my_cc gcc -Wno-sizeof-pointer-memaccess
 %else
 Autoreq: 0
@@ -74,6 +75,26 @@ cp %{SOURCE1001} .
 %make bios clean
 %make bios spotless
 %make bios all
+
+# workaround: rebuild with i686 ABI to get working extlinux
+%ifarch x86_64
+CFLAGS="-m32"
+export CFLAGS
+
+%define my_cc gcc -m32 -Wno-sizeof-pointer-memaccess -march=i686 -mtune=i686 -funwind-tables
+%define make %__make CC='%{my_cc}' OPTFLAGS="-DDEBUG=1 -O0"
+
+rm -rfv bios/extlinux bios/libinstaller \
+  bios/com32 bios/core bios/linux bios/win32 bios/win64 \
+  bios/mtools bios/sample bios/txt bios/dos bios/dosutil bios/codepage bios/lzo \
+  bios/memdisk
+
+%{my_cc} -v
+nasm -v
+
+%make bios all -k V=1
+%endif
+
 
 %install
 
