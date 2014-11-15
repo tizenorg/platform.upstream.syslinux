@@ -19,6 +19,7 @@ BuildRequires: git
 Requires: mtools
 
 %ifarch x86_64
+BuildRequires: glibc-devel-32bit, gcc-32bit, libgcc_s1-32bit
 %define my_cc gcc -Wno-sizeof-pointer-memaccess
 %else
 Autoreq: 0
@@ -70,6 +71,9 @@ booting in the /var/lib/tftpboot directory.
 %build
 cp %{SOURCE1001} .
 %define make %__make CC='%{my_cc}' OPTFLAGS="-DDEBUG=1 -O0"
+
+%{my_cc} -v
+nasm -v
 
 %make bios clean
 %make bios spotless
