@@ -28,16 +28,11 @@ ifeq ($(ARCH),i386)
 	GCCOPT    += $(call gcc_ok,-mincoming-stack-boundary=2,)
 endif
 ifeq ($(ARCH),x86_64)
-	GCCOPT := $(call gcc_ok,-m32)
-	GCCOPT += $(call gcc_ok,-march=i386)
-	GCCOPT    += $(call gcc_ok,-mpreferred-stack-boundary=2,)
-	GCCOPT    += $(call gcc_ok,-mincoming-stack-boundary=2,)
-
-#	GCCOPT := $(call gcc_ok,-m64)
-#	GCCOPT += $(call gcc_ok,-march=x86-64)
-#	#let preferred-stack-boundary and incoming-stack-boundary be default(=4)
+	GCCOPT := $(call gcc_ok,-m64)
+	GCCOPT += $(call gcc_ok,-march=x86-64)
+	#let preferred-stack-boundary and incoming-stack-boundary be default(=4)
 # Somewhere down the line ld barfs requiring -fPIC
-#	GCCOPT += $(call gcc_ok,-fPIC)
+	GCCOPT += $(call gcc_ok,-fPIC)
 endif
 GCCOPT    += $(call gcc_ok,-ffreestanding,)
 GCCOPT	  += $(call gcc_ok,-fno-stack-protector,)

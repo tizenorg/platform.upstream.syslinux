@@ -5,7 +5,6 @@ BINFILES = bootsect_bin.c ldlinux_bin.c \
 PERL	 = perl
 
 VPATH = $(SRC)
-CC=gcc -m32
 
 all: installer
 

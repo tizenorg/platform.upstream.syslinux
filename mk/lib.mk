@@ -11,9 +11,9 @@ ifeq ($(ARCH),i386)
 	MARCH = i386
 endif
 ifeq ($(ARCH),x86_64)
-#	GCCOPT += $(call gcc_ok,-m64,)
+	GCCOPT += $(call gcc_ok,-m64,)
 	#let preferred-stack-boundary be default(=4)
-#	MARCH = x86-64
+	MARCH = x86-64
 endif
 GCCOPT += $(call gcc_ok,-fno-stack-protector,)
 GCCOPT += $(call gcc_ok,-fwrapv,)

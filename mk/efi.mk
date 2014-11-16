@@ -16,7 +16,7 @@ ifeq ($(ARCH),i386)
 	EFI_SUBARCH = ia32
 endif
 ifeq ($(ARCH),x86_64)
-#	ARCHOPT = -m64 -march=x86-64
+	ARCHOPT = -m64 -march=x86-64
 	EFI_SUBARCH = $(ARCH)
 endif
 

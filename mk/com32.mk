@@ -27,8 +27,8 @@ ifeq ($(strip $(ARCH)),i386)
 	GCCOPT += $(call gcc_ok,-incoming-stack-boundary=2,)
 endif
 ifeq ($(strip $(ARCH)),x86_64)
-#	GCCOPT += $(call gcc_ok,-m64,)
-#	GCCOPT += $(call gcc_ok,-march=x86-64)
+	GCCOPT += $(call gcc_ok,-m64,)
+	GCCOPT += $(call gcc_ok,-march=x86-64)
 	#let the stack-boundary default to whatever it is on 64bit
 	#GCCOPT += $(call gcc_ok,-mpreferred-stack-boundary=8,)
 	#GCCOPT += $(call gcc_ok,-incoming-stack-boundary=8,)
