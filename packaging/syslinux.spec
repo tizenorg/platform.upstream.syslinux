@@ -101,12 +101,16 @@ export CXXFLAGS
 FFLAGS="-m32"
 export FFLAGS
 
-rm -rfv bios/extlinux bios/libinstaller bios/com32 bios/core bios/linux   bios/win32 bios/win64
-rm -rfv bios/mtools bios/sample bios/txt bios/dos bios/dosutil bios/codepage bios/lzo
-rm -rfv bios/memdisk # err todo bios/diag
-%define my_cc linux32 gcc -m32 -Wno-sizeof-pointer-memaccess -m32 -march=i686 -mtune=i686 -funwind-tables
+
+%define my_cc gcc -m32 -Wno-sizeof-pointer-memaccess -m32 -march=i686 -mtune=i686 -funwind-tables
+
 #CFLAGS=-m32
 #%define make linux32 %__make CC='%{my_cc}' OPTFLAGS="-DDEBUG=1 -O0" LD="linux32 ld -m elf_i386" NASM="linux32 nasm" DATE=20141116 MARCH=i386
+
+rm -rfv bios/extlinux bios/libinstaller bios/com32 bios/core bios/linux bios/win32 bios/win64
+rm -rfv bios/mtools bios/sample bios/txt bios/dos bios/dosutil bios/codepage bios/lzo
+rm -rfv bios/memdisk # err todo bios/diag
+
 %define make %__make CC='%{my_cc}' OPTFLAGS="-DDEBUG=1 -O0"
 
 %make bios all -k V=1
