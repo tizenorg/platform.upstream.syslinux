@@ -20,9 +20,11 @@ Requires: mtools
 
 %ifarch x86_64
 BuildRequires: glibc-devel-32bit, gcc-32bit, libgcc_s1-32bit
-%define my_cc linux32 gcc -m32 -Wno-sizeof-pointer-memaccess -m32 -march=i686 -mtune=i686 -funwind-tables
+#%define my_cc linux32 gcc -m32 -Wno-sizeof-pointer-memaccess -m32 -march=i686 -mtune=i686 -funwind-tables
+%define my_cc gcc -Wno-sizeof-pointer-memaccess
 #CFLAGS=-m32
-%define make linux32 %__make CC='%{my_cc}' OPTFLAGS="-DDEBUG=1 -O0" LD="linux32 ld -m elf_i386" NASM="linux32 nasm" DATE=20141116 MARCH=i386
+#%define make linux32 %__make CC='%{my_cc}' OPTFLAGS="-DDEBUG=1 -O0" LD="linux32 ld -m elf_i386" NASM="linux32 nasm" DATE=20141116 MARCH=i386
+%define make %__make CC='%{my_cc}' OPTFLAGS="-DDEBUG=1 -O0"
 %else
 Autoreq: 0
 Requires: libc.so.6
@@ -74,14 +76,6 @@ booting in the /var/lib/tftpboot directory.
 %build
 cp %{SOURCE1001} .
 
-CFLAGS="-m32"
-export CFLAGS
-
-CXXFLAGS="-m32"
-export CXXFLAGS
-
-FFLAGS="-m32"
-export FFLAGS
 
 %{my_cc} -v
 nasm -v
@@ -93,8 +87,31 @@ nasm -v
 %make bios spotless
 %make bios all -k V=1
 
+
 grep _len */*/*_bin.c  # syslinux_ldlinuxc32_len # 80384 169288
 find . -iname "ldlinux*" -type f  -exec wc -c {} \;
+
+#{
+CFLAGS="-m32"
+export CFLAGS
+
+CXXFLAGS="-m32"
+export CXXFLAGS
+
+FFLAGS="-m32"
+export FFLAGS
+
+rm -rfv bios/extlinux bios/libinstaller bios/com32 bios/core bios/linux   bios/win32 bios/win64
+rm -rfv bios/mtools bios/sample bios/txt bios/dos bios/dosutil bios/codepage bios/lzo
+rm -rfv bios/memdisk # err todo bios/diag
+%define my_cc linux32 gcc -m32 -Wno-sizeof-pointer-memaccess -m32 -march=i686 -mtune=i686 -funwind-tables
+#CFLAGS=-m32
+#%define make linux32 %__make CC='%{my_cc}' OPTFLAGS="-DDEBUG=1 -O0" LD="linux32 ld -m elf_i386" NASM="linux32 nasm" DATE=20141116 MARCH=i386
+%define make %__make CC='%{my_cc}' OPTFLAGS="-DDEBUG=1 -O0"
+
+%make bios all -k V=1
+#}
+
 
 #%make bios all -k V=1 CC=gcc
 
