@@ -20,8 +20,9 @@ Requires: mtools
 
 %ifarch x86_64
 BuildRequires: glibc-devel-32bit, gcc-32bit, libgcc_s1-32bit
-%define my_cc gcc -Wno-sizeof-pointer-memaccess
-%define make %__make CC='%{my_cc}'
+%define my_cc linux32 gcc -m32 -Wno-sizeof-pointer-memaccess -m32 -march=i686 -mtune=i686 -funwind-tables
+#CFLAGS=-m32
+%define make linux32 %__make CC='%{my_cc}' OPTFLAGS="-DDEBUG=1 -O0" LD="linux32 ld -m elf_i386" NASM="linux32 nasm" DATE=20141116 MARCH=i386
 %else
 Autoreq: 0
 Requires: libc.so.6
@@ -73,15 +74,29 @@ booting in the /var/lib/tftpboot directory.
 %build
 cp %{SOURCE1001} .
 
+CFLAGS="-m32"
+export CFLAGS
+
+CXXFLAGS="-m32"
+export CXXFLAGS
+
+FFLAGS="-m32"
+export FFLAGS
+
 %{my_cc} -v
 nasm -v
 
 # disable debug and development flags to reduce bootloader size
-truncate --size 0 mk/devel.mk
+# truncate --size 0 mk/devel.mk
 
 %make bios clean
 %make bios spotless
-%make bios all
+%make bios all -k V=1
+
+grep _len */*/*_bin.c  # syslinux_ldlinuxc32_len # 80384 169288
+find . -iname "ldlinux*" -type f  -exec wc -c {} \;
+
+#%make bios all -k V=1 CC=gcc
 
 %install
 

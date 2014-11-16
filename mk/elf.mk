@@ -25,8 +25,8 @@ ifeq ($(ARCH),i386)
 	GCCOPT += $(call gcc_ok,-mpreferred-stack-boundary=2,)
 endif
 ifeq ($(ARCH),x86_64)
-	GCCOPT += $(call gcc_ok,-m64,)
-	GCCOPT += $(call gcc_ok,-march=x86-64)
+#	GCCOPT += $(call gcc_ok,-m64,)
+#	GCCOPT += $(call gcc_ok,-march=x86-64)
 	#let preferred-stack-boundary be default (=4)
 endif
 GCCOPT += -Os -fomit-frame-pointer
