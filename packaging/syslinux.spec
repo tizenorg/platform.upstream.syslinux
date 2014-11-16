@@ -2,7 +2,7 @@
 Summary: Kernel loader which uses a FAT, ext2/3 or iso9660 filesystem or a PXE network
 Name: syslinux
 Version: 6.03
-Release: 0
+Release: 20141117.074422pcoval1416210262
 License: GPL-2.0
 Url: http://syslinux.zytor.com/
 #X-Vc-Url: git://git.kernel.org/pub/scm/boot/syslinux/syslinux.git
@@ -89,14 +89,7 @@ nasm -v
 CFLAGS="-m32"
 export CFLAGS
 
-CXXFLAGS="-m32"
-export CXXFLAGS
-
-FFLAGS="-m32"
-export FFLAGS
-
-%define my_cc gcc -Wno-sizeof-pointer-memaccess
-#%define my_cc gcc -m32 -Wno-sizeof-pointer-memaccess -m32 -march=i686 -mtune=i686 -funwind-tables
+%define my_cc gcc -m32 -Wno-sizeof-pointer-memaccess
 %define make %__make CC='%{my_cc}' OPTFLAGS="-DDEBUG=1 -O0"
 
 rm -rfv bios/extlinux bios/libinstaller bios/com32 bios/core bios/linux bios/win32 bios/win64
