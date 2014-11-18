@@ -9,6 +9,7 @@
 #
 # Canned recipes
 
+sudo?=sudo
 #
 # copy-files - copy a config to the mounted filesystem
 # 
@@ -57,7 +58,7 @@ define run-test =
     $(copy-files)
     $(install-config)
 
-    ${sudo} $(QEMU) $(QEMU_FLAGS) -serial file:$@.log
+    $(sudo) $(QEMU) $(QEMU_FLAGS) -serial file:$@.log
 
     $(delete-config)
     $(remove-files)

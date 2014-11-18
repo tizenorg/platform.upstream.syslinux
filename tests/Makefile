@@ -25,7 +25,6 @@ INITIAL := 1
 HDD = $(OBJ)/hdd.img
 
 export QEMU QEMU_FLAGS INITIAL HDD
-
 SYSLINUX_output-str := $(shell ${sudo} $(SRC)/build-syslinux start \
 				$(objdir)/bios $(HDD) test.cfg)
 SYSLINUX_MOUNT_DIR = $(firstword $(SYSLINUX_output-str))
