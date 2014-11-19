@@ -76,21 +76,31 @@ cp %{SOURCE1001} .
 %make bios spotless
 %make bios all
 
-# workaround: rebuild with i686 ABI to get working extlinux
 %ifarch x86_64
+echo "TODO: regenerate 32bit sources for {ext,*}linux installers"
+ORIG_CFLAGS="${CFLAGS}"
 CFLAGS="-m32"
 export CFLAGS
 
 %define my_cc gcc -m32 -Wno-sizeof-pointer-memaccess -march=i686 -mtune=i686 -funwind-tables
 %define make %__make CC='%{my_cc}' OPTFLAGS="-DDEBUG=1 -O0"
 
-rm -rfv bios/extlinux bios/libinstaller \
-  bios/com32 bios/core bios/linux bios/win32 bios/win64 \
-  bios/mtools bios/sample bios/txt bios/dos bios/dosutil bios/codepage bios/lzo \
-  bios/memdisk
+rm -rfv bios/extlinux bios/libinstaller bios/com32 bios/core bios/linux
 
 %{my_cc} -v
 nasm -v
+
+%make bios all V=1 || echo "ignore: expected to fail, checking file:"
+grep len ./bios/libinstaller/ldlinuxc32_bin.c
+
+echo "TODO: rebuild x64 utilities with 32bit generated sources"
+CFLAGS="${ORIG_CFLAGS}"
+export CFLAGS
+%define make %__make CC='gcc'
+
+rm -rfv \
+  bios/*/ldlinuxc32_bin.o \
+  bios/extlinux/*.o
 
 %make bios all -k V=1
 %endif
