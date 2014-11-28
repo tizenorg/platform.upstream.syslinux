@@ -29,7 +29,7 @@ FILTERED_OBJS:= $(subst $(core),$(OBJ)/../core/,$(patsubst %.c,%.o, \
 
 # Don't include unit tests
 FILTERED_OBJS += $(subst $(core),$(OBJ)/../core/, \
-	$(patsubst %.c,%.o,$(shell find $(core) -path "*/tests/*.c" -print)))
+	$(patsubst %.c,%.o,$(shell find $(core) -path "*/tests/*.c" -print | sort)))
 
 # Don't include console objects
 CORE_OBJS = $(filter-out %hello.o %rawcon.o %plaincon.o %strcasecmp.o %bios.o \
