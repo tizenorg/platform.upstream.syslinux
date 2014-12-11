@@ -68,13 +68,14 @@ booting in the /var/lib/tftpboot directory.
 %prep
 %setup -q -a 10 -n %{name}-%{version}
 
+
+%build
 %ifarch %{ix86}
 ORIG_CFLAGS="${CFLAGS}"
 CFLAGS='-O2 -g -m32 -march=i686 -mtune=i686 -fmessage-length=0 -D_FORTIFY_SOURCE=2 -fstack-protector -funwind-tables  -fasynchronous-unwind-tables'
 export CFLAGS
 %endif
 
-%build
 cp %{SOURCE1001} .
 %define make %__make CC='%{my_cc}' OPTFLAGS="-DDEBUG=1 -O0" HEXDATE='0x00000000'
 
